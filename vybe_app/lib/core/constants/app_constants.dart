@@ -4,21 +4,32 @@ class AppConstants {
   static const String appName = 'VYBE';
   static const String appTagline = 'Voice-First Social Discovery';
 
-  // API Configuration (Adapts for Android Emulator vs Web/iOS)
+  // Production Render Cloud Server
+  static const String _cloudBaseUrl = 'https://dateingapp.onrender.com';
+
+  // Set to true if you want to test against local machine
+  static const bool useLocalhost = false;
+
   static String get apiBaseUrl {
-    if (kIsWeb) return 'http://localhost:5000/api/v1';
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      return 'http://10.0.2.2:5000/api/v1';
+    if (useLocalhost) {
+      if (kIsWeb) return 'http://localhost:5000/api/v1';
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        return 'http://10.0.2.2:5000/api/v1';
+      }
+      return 'http://localhost:5000/api/v1';
     }
-    return 'http://localhost:5000/api/v1';
+    return '$_cloudBaseUrl/api/v1';
   }
 
   static String get socketUrl {
-    if (kIsWeb) return 'http://localhost:5000';
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      return 'http://10.0.2.2:5000';
+    if (useLocalhost) {
+      if (kIsWeb) return 'http://localhost:5000';
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        return 'http://10.0.2.2:5000';
+      }
+      return 'http://localhost:5000';
     }
-    return 'http://localhost:5000';
+    return _cloudBaseUrl;
   }
 
   // Agora App ID fallback
