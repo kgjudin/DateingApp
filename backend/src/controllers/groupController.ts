@@ -51,7 +51,11 @@ export class GroupController {
 
   public static async createGroup(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      const userId = req.user?.id || 'user-elena-101';
+      const userId = req.user?.id;
+      if (!userId) {
+        res.status(401).json({ success: false, error: { message: 'Unauthorized' } });
+        return;
+      }
       const { name, description, category, avatarUrl, coverUrl, rules, isPrivate } = req.body;
 
       if (!name) {

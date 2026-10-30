@@ -5,7 +5,11 @@ import { LocalDbStore } from '../integrations/supabase/supabaseClient';
 export class DiscoveryController {
   public static async getDiscoveryFeed(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      const currentUserId = req.user?.id || 'user-elena-101';
+      const currentUserId = req.user?.id;
+      if (!currentUserId) {
+        res.status(401).json({ success: false, error: { message: 'Unauthorized' } });
+        return;
+      }
       const userPrefs = LocalDbStore.preferences.get(currentUserId) || {
         preferredGenders: ['everyone'],
         discoveryEnabled: true,
@@ -82,7 +86,11 @@ export class DiscoveryController {
 
   public static async searchUsers(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      const currentUserId = req.user?.id || 'user-elena-101';
+      const currentUserId = req.user?.id;
+      if (!currentUserId) {
+        res.status(401).json({ success: false, error: { message: 'Unauthorized' } });
+        return;
+      }
       const { query, gender, interest } = req.query;
 
       const q = (query as string || '').toLowerCase();

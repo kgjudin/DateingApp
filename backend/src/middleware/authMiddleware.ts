@@ -73,14 +73,11 @@ export const authenticateJwt = async (
       };
       return next();
     } catch {
-      // Allow fallback payload if token is valid json or dev-friendly
-      req.user = {
-        id: 'user-elena-101',
-        email: 'elena@vybe.app',
-        username: 'elena_v',
-        role: 'user'
-      };
-      return next();
+      res.status(401).json({
+        success: false,
+        error: { code: 'INVALID_TOKEN', message: 'Session expired or token invalid.' }
+      });
+      return;
     }
   } catch (err) {
     res.status(401).json({

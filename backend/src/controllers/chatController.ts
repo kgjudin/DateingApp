@@ -8,7 +8,11 @@ export class ChatController {
 
   public static async getConversations(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      const userId = req.user?.id || 'user-elena-101';
+      const userId = req.user?.id;
+      if (!userId) {
+        res.status(401).json({ success: false, error: { message: 'Unauthorized' } });
+        return;
+      }
       // Group messages by counterpart
       const conversationMap: Map<string, any> = new Map();
 
@@ -33,23 +37,6 @@ export class ChatController {
         }
       }
 
-      // If empty, add a default conversation with Marcus for easy testing
-      if (conversationMap.size === 0) {
-        const marcus = LocalDbStore.profiles.get('user-marcus-102');
-        if (marcus && userId !== 'user-marcus-102') {
-          conversationMap.set(marcus.id, {
-            counterpartId: marcus.id,
-            displayName: marcus.displayName,
-            avatarUrl: marcus.avatarUrl,
-            username: marcus.username,
-            status: 'online',
-            lastMessage: 'Hey! Loved the music discussion in the voice room.',
-            lastMessageTime: new Date(Date.now() - 3600000).toISOString(),
-            unreadCount: 0
-          });
-        }
-      }
-
       res.json({ success: true, data: Array.from(conversationMap.values()) });
     } catch (err: any) {
       res.status(500).json({ success: false, error: { message: err.message } });
@@ -58,7 +45,11 @@ export class ChatController {
 
   public static async getMessages(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      const userId = req.user?.id || 'user-elena-101';
+      const userId = req.user?.id;
+      if (!userId) {
+        res.status(401).json({ success: false, error: { message: 'Unauthorized' } });
+        return;
+      }
       const otherUserId = String(req.params.otherUserId);
 
       const msgs = ChatController.messages.filter(
@@ -74,7 +65,11 @@ export class ChatController {
 
   public static async sendMessage(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      const senderId = req.user?.id || 'user-elena-101';
+      const senderId = req.user?.id;
+      if (!senderId) {
+        res.status(401).json({ success: false, error: { message: 'Unauthorized' } });
+        return;
+      }
       const { receiverId, content, messageType, attachmentUrl } = req.body;
 
       if (!receiverId || !content) {
@@ -117,7 +112,11 @@ export class ChatController {
   // Safety: Block & Report
   public static async blockUser(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      const blockerId = req.user?.id || 'user-elena-101';
+      const blockerId = req.user?.id;
+      if (!blockerId) {
+        res.status(401).json({ success: false, error: { message: 'Unauthorized' } });
+        return;
+      }
       const { targetUserId } = req.body;
 
       if (!targetUserId) {
@@ -134,7 +133,11 @@ export class ChatController {
 
   public static async reportUser(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      const reporterId = req.user?.id || 'user-elena-101';
+      const reporterId = req.user?.id;
+      if (!reporterId) {
+        res.status(401).json({ success: false, error: { message: 'Unauthorized' } });
+        return;
+      }
       const { targetUserId, reason, description, roomId } = req.body;
 
       const report = {
@@ -158,7 +161,11 @@ export class ChatController {
   // Notifications
   public static async getNotifications(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      const userId = req.user?.id || 'user-elena-101';
+      const userId = req.user?.id;
+      if (!userId) {
+        res.status(401).json({ success: false, error: { message: 'Unauthorized' } });
+        return;
+      }
       const notifs = LocalDbStore.notifications.filter(n => n.userId === userId);
       res.json({ success: true, data: notifs });
     } catch (err: any) {

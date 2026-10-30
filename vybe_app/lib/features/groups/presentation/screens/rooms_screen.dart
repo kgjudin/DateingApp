@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/glass_container.dart';
+import '../../../../core/network/api_client.dart';
+import '../../../auth/presentation/auth_controller.dart';
 import '../rooms_controller.dart';
 
 class RoomsScreen extends ConsumerWidget {
@@ -227,14 +229,36 @@ class RoomsScreen extends ConsumerWidget {
   }
 
   Widget _buildGroupsGrid(BuildContext context, List<dynamic> groups) {
+    if (groups.isEmpty) {
+      return Container(
+        margin: const EdgeInsets.only(top: 8),
+        padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: AppColors.cardBackground.withOpacity(0.5),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.glassBorder),
+        ),
+        child: const Text(
+          'No communities created yet. Create a group to connect with people!',
+          style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+          textAlign: TextAlign.center,
+        ),
+      );
+    }
+
     return Column(
-      children: [
-        _buildGroupTile('Midnight Philosophers', '142 members • Late night reflections', 'General Conversations', Icons.nightlife_rounded),
-        const SizedBox(height: 10),
-        _buildGroupTile('Future & Tech Minds', '289 members • AI, startups & builds', 'Technology', Icons.memory_rounded),
-        const SizedBox(height: 10),
-        _buildGroupTile('Acoustic Vinyl Lounge', '98 members • Indie music & vinyl swaps', 'Music', Icons.music_note_rounded),
-      ],
+      children: groups.map((g) {
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: _buildGroupTile(
+            g['name'] ?? 'Community',
+            '${g['memberCount'] ?? 1} members • ${g['description'] ?? ''}',
+            g['category'] ?? 'General',
+            Icons.groups_rounded,
+          ),
+        );
+      }).toList(),
     );
   }
 
@@ -324,23 +348,41 @@ class RoomsScreen extends ConsumerWidget {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: () {
+                onPressed: () async {
+                  final currentUser = ref.read(authControllerProvider).user;
+                  final hostName = currentUser?['displayName'] ?? currentUser?['username'] ?? 'Host';
+                  final hostAvatar = currentUser?['avatarUrl'] ?? '';
+                  final hostId = currentUser?['id'] ?? '';
+                  final roomTitle = titleController.text.trim().isEmpty ? 'Open Voice Stage' : titleController.text.trim();
+                  final roomTopic = topicController.text.trim().isEmpty ? 'General' : topicController.text.trim();
+
                   final newRoom = {
                     'id': 'room_${DateTime.now().millisecondsSinceEpoch}',
-                    'title': titleController.text.trim().isEmpty ? 'Open Voice Stage' : titleController.text.trim(),
-                    'topic': topicController.text.trim().isEmpty ? 'General' : topicController.text.trim(),
+                    'title': roomTitle,
+                    'topic': roomTopic,
                     'groupName': 'Live Stage',
-                    'hostName': 'Elena Vance',
-                    'hostAvatar': 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=500',
+                    'hostId': hostId,
+                    'hostName': hostName,
+                    'hostAvatar': hostAvatar,
                     'listenersCount': 1,
                     'speakersCount': 1,
                     'speakers': [
-                      {'userId': 'user-elena-101', 'name': 'Elena Vance', 'role': 'host', 'isMuted': false, 'avatarUrl': 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=500'},
+                      {'userId': hostId, 'name': hostName, 'role': 'host', 'isMuted': false, 'avatarUrl': hostAvatar},
                     ]
                   };
-                  Navigator.pop(ctx);
-                  ref.read(roomsControllerProvider.notifier).joinLiveRoom(newRoom);
-                  context.push('/room/${newRoom['id']}');
+
+                  try {
+                    await ref.read(apiClientProvider).post('/rooms/create', body: {
+                      'title': roomTitle,
+                      'topic': roomTopic,
+                    });
+                  } catch (_) {}
+
+                  if (context.mounted) {
+                    Navigator.pop(ctx);
+                    ref.read(roomsControllerProvider.notifier).joinLiveRoom(newRoom);
+                    context.push('/room/${newRoom['id']}');
+                  }
                 },
                 child: const Text('Go Live Now'),
               ),

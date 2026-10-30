@@ -189,6 +189,23 @@ class DiscoveryScreen extends ConsumerWidget {
   }
 
   Widget _buildOnlineNowCarousel(BuildContext context, WidgetRef ref, List<dynamic> users) {
+    if (users.isEmpty) {
+      return Container(
+        height: 72,
+        margin: const EdgeInsets.symmetric(horizontal: 20),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: AppColors.cardBackground.withOpacity(0.5),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.glassBorder),
+        ),
+        child: const Text(
+          'No other users online right now. Invite friends!',
+          style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+        ),
+      );
+    }
+
     return SizedBox(
       height: 106,
       child: ListView.builder(
@@ -246,6 +263,35 @@ class DiscoveryScreen extends ConsumerWidget {
   }
 
   Widget _buildDiscoveryUserList(BuildContext context, WidgetRef ref, List<dynamic> users) {
+    if (users.isEmpty) {
+      return Container(
+        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: AppColors.cardBackground.withOpacity(0.5),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AppColors.glassBorder),
+        ),
+        child: const Column(
+          children: [
+            Icon(Icons.people_outline_rounded, color: AppColors.primaryAccentLight, size: 36),
+            SizedBox(height: 10),
+            Text(
+              'No users found matching your filters',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14),
+            ),
+            SizedBox(height: 4),
+            Text(
+              'Try adjusting your preferences or check back soon.',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      );
+    }
+
     return ListView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),

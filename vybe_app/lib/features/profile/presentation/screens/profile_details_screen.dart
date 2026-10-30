@@ -43,23 +43,8 @@ class _ProfileDetailsScreenState extends ConsumerState<ProfileDetailsScreen> {
       }
     } catch (_) {}
 
-    // Mock fallback profile
     setState(() {
-      _profile = {
-        'id': widget.userId,
-        'displayName': 'Marcus Chen',
-        'username': 'marcus_code',
-        'age': 28,
-        'gender': 'male',
-        'location': 'San Francisco, USA',
-        'bio': 'AI researcher and late-night gamer. Always up for thought-provoking debates about the future of tech.',
-        'avatarUrl': 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=500',
-        'coverUrl': 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=1000',
-        'voiceIntroUrl': 'https://actions.google.com/sounds/v1/speech/male_voice.ogg',
-        'voiceIntroDuration': 18,
-        'interests': ['Technology', 'Gaming', 'Books', 'Business'],
-        'status': 'online',
-      };
+      _profile = null;
       _isLoading = false;
     });
   }
@@ -80,8 +65,21 @@ class _ProfileDetailsScreenState extends ConsumerState<ProfileDetailsScreen> {
       );
     }
 
-    final user = _profile ?? {};
-    final interests = (user['interests'] as List?) ?? ['Tech', 'Gaming'];
+    if (_profile == null) {
+      return Scaffold(
+        backgroundColor: AppColors.primaryBackground,
+        appBar: AppBar(title: const Text('User Profile')),
+        body: const Center(
+          child: Text(
+            'Profile not found or unavailable.',
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 16),
+          ),
+        ),
+      );
+    }
+
+    final user = _profile!;
+    final interests = (user['interests'] as List?) ?? [];
 
     return Scaffold(
       backgroundColor: AppColors.primaryBackground,

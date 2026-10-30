@@ -219,7 +219,7 @@ class CallScreen extends ConsumerWidget {
                               context: context,
                               isScrollControlled: true,
                               builder: (ctx) => GiftBottomSheet(
-                                receiverId: peer['id'] ?? 'user-marcus-102',
+                                receiverId: peer['id'] ?? '',
                                 receiverName: peer['displayName'] ?? 'Vybe User',
                               ),
                             );

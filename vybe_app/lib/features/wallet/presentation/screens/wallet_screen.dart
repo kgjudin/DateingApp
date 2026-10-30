@@ -36,14 +36,9 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
       }
     } catch (_) {}
 
-    // Fallback transaction ledger
+    // Real empty transaction ledger
     setState(() {
-      _transactions = [
-        {'id': 'tx-1', 'description': 'Sent Heart to Marcus Chen', 'amount': -50, 'createdAt': '10 mins ago', 'type': 'gift_sent'},
-        {'id': 'tx-2', 'description': 'Received Rose from Priya Sharma', 'amount': 10, 'createdAt': '2 hours ago', 'type': 'gift_received'},
-        {'id': 'tx-3', 'description': 'Coin Top-up Package (500 Coins)', 'amount': 500, 'createdAt': 'Yesterday', 'type': 'coin_purchase'},
-        {'id': 'tx-4', 'description': 'Welcome to VYBE! Bonus Coins', 'amount': 100, 'createdAt': '3 days ago', 'type': 'reward'},
-      ];
+      _transactions = [];
     });
   }
 

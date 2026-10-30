@@ -1,9 +1,9 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/socket_service.dart';
 import '../../../core/voice/agora_voice_service.dart';
+import '../../auth/presentation/auth_controller.dart';
 
 class RoomState {
   final bool isLoading;
@@ -98,7 +98,12 @@ class RoomsController extends StateNotifier<RoomState> {
         groups: (groupsRes is List ? groupsRes : []),
       );
     } catch (e) {
-      _loadMockRooms();
+      state = state.copyWith(
+        isLoading: false,
+        liveRooms: [],
+        groups: [],
+        errorMessage: e.toString(),
+      );
     }
   }
 
@@ -111,8 +116,9 @@ class RoomsController extends StateNotifier<RoomState> {
       final token = res?['token'] ?? '';
       final appId = res?['appId'] ?? 'test_agora_app_id_vybe';
       final role = res?['role'] ?? 'listener';
+      final currentUserId = _ref.read(authControllerProvider).user?['id'] ?? '';
 
-      _ref.read(socketServiceProvider).joinRoomChannel(roomId, 'user-elena-101');
+      _ref.read(socketServiceProvider).joinRoomChannel(roomId, currentUserId);
 
       await _ref.read(agoraVoiceServiceProvider).joinVoiceChannel(
             appId: appId,
@@ -125,7 +131,7 @@ class RoomsController extends StateNotifier<RoomState> {
       return true;
     } catch (e) {
       state = state.copyWith(isLoading: false);
-      return true; // allow dev fallback
+      return false;
     }
   }
 
@@ -155,51 +161,11 @@ class RoomsController extends StateNotifier<RoomState> {
       await _ref.read(apiClientProvider).post('/rooms/$roomId/leave');
     } catch (_) {}
 
-    _ref.read(socketServiceProvider).leaveRoomChannel(roomId, 'user-elena-101');
+    final currentUserId = _ref.read(authControllerProvider).user?['id'] ?? '';
+    _ref.read(socketServiceProvider).leaveRoomChannel(roomId, currentUserId);
     await _ref.read(agoraVoiceServiceProvider).leaveChannel();
 
     state = state.copyWith(activeRoom: null, isHandRaised: false);
-  }
-
-  void _loadMockRooms() {
-    final mockRooms = [
-      {
-        'id': 'room-live-101',
-        'title': 'Late Night Chill & Lo-Fi Vinyl Talks ☕',
-        'topic': 'Music & Memories',
-        'groupName': 'Midnight Philosophers',
-        'hostName': 'Elena Vance',
-        'hostAvatar': 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=500',
-        'listenersCount': 18,
-        'speakersCount': 3,
-        'channelName': 'vybe_room_night_owls',
-        'speakers': [
-          {'userId': 'user-elena-101', 'name': 'Elena Vance', 'role': 'host', 'isMuted': false, 'avatarUrl': 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=500'},
-          {'userId': 'user-zane-104', 'name': 'Zane Parker', 'role': 'speaker', 'isMuted': false, 'avatarUrl': 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=500'},
-          {'userId': 'user-sophia-103', 'name': 'Sophia Ray', 'role': 'speaker', 'isMuted': true, 'avatarUrl': 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=500'},
-        ]
-      },
-      {
-        'id': 'room-live-102',
-        'title': 'Will AI Replace Social Media or Reinvent Voice?',
-        'topic': 'AI & Social Futures',
-        'groupName': 'Future & Tech Minds',
-        'hostName': 'Marcus Chen',
-        'hostAvatar': 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=500',
-        'listenersCount': 42,
-        'speakersCount': 2,
-        'channelName': 'vybe_room_tech_minds',
-        'speakers': [
-          {'userId': 'user-marcus-102', 'name': 'Marcus Chen', 'role': 'host', 'isMuted': false, 'avatarUrl': 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=500'},
-          {'userId': 'user-priya-105', 'name': 'Priya Sharma', 'role': 'speaker', 'isMuted': false, 'avatarUrl': 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=500'},
-        ]
-      }
-    ];
-
-    state = state.copyWith(
-      isLoading: false,
-      liveRooms: mockRooms,
-    );
   }
 
   @override

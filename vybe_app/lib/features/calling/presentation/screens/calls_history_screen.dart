@@ -35,40 +35,9 @@ class _CallsHistoryScreenState extends ConsumerState<CallsHistoryScreen> {
       }
     } catch (_) {}
 
-    // Mock fallback history
+    // No mock fallback: maintain real state
     setState(() {
-      _history = [
-        {
-          'id': 'h1',
-          'callerName': 'Marcus Chen',
-          'receiverName': 'Elena Vance',
-          'direction': 'incoming',
-          'status': 'ended',
-          'duration': 412,
-          'avatarUrl': 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=500',
-          'createdAt': 'Today, 2:30 PM',
-        },
-        {
-          'id': 'h2',
-          'callerName': 'Elena Vance',
-          'receiverName': 'Sophia Ray',
-          'direction': 'outgoing',
-          'status': 'ended',
-          'duration': 185,
-          'avatarUrl': 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=500',
-          'createdAt': 'Yesterday, 8:15 PM',
-        },
-        {
-          'id': 'h3',
-          'callerName': 'Zane Parker',
-          'receiverName': 'Elena Vance',
-          'direction': 'incoming',
-          'status': 'missed',
-          'duration': 0,
-          'avatarUrl': 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=500',
-          'createdAt': '2 days ago',
-        },
-      ];
+      _history = [];
       _isLoading = false;
     });
   }
@@ -147,10 +116,11 @@ class _CallsHistoryScreenState extends ConsumerState<CallsHistoryScreen> {
                             IconButton(
                               icon: const Icon(Icons.phone_in_talk_rounded, color: AppColors.primaryAccent),
                               onPressed: () {
+                                final targetId = item['receiverId'] ?? item['callerId'] ?? '';
                                 ref.read(callingControllerProvider.notifier).startCall(
-                                      receiverId: 'user-marcus-102',
+                                      receiverId: targetId,
                                       receiverProfile: {
-                                        'displayName': item['callerName'] ?? 'Vybe User',
+                                        'displayName': item['callerName'] ?? item['receiverName'] ?? 'Vybe User',
                                         'avatarUrl': item['avatarUrl'],
                                       },
                                     );

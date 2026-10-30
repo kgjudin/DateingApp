@@ -93,11 +93,11 @@ class ProfileScreen extends ConsumerWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            '${user['displayName'] ?? 'Elena Vance'} • ${user['age'] ?? 26}',
+                            '${user['displayName'] ?? 'Vybe User'}${user['age'] != null ? ' • ${user['age']}' : ''}',
                             style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 22),
                           ),
                           Text(
-                            '@${user['username'] ?? 'elena_v'} • ${user['location'] ?? 'Berlin, Germany'}',
+                            '@${user['username'] ?? 'vyber'}${user['location'] != null ? ' • ${user['location']}' : ''}',
                             style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
                           ),
                         ],
@@ -118,48 +118,49 @@ class ProfileScreen extends ConsumerWidget {
 
                   // BIO
                   Text(
-                    user['bio'] ?? 'Podcaster & indie musician. Let us talk about travel, late-night acoustic guitar, and philosophy.',
+                    user['bio'] ?? 'No bio added yet. Tap Edit to personalize your profile.',
                     style: const TextStyle(color: AppColors.textPrimary, fontSize: 14, height: 1.4),
                   ),
 
                   const SizedBox(height: 20),
 
                   // VOICE INTRO PLAYER CARD
-                  GlassContainer(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: const BoxDecoration(
-                            gradient: AppColors.primaryGradient,
-                            shape: BoxShape.circle,
+                  if (user['voiceIntroUrl'] != null)
+                    GlassContainer(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: const BoxDecoration(
+                              gradient: AppColors.primaryGradient,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 22),
                           ),
-                          child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 22),
-                        ),
-                        const SizedBox(width: 14),
-                        const Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('Voice Introduction', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
-                              Text('00:14 Audio Preview', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-                            ],
+                          const SizedBox(width: 14),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Voice Introduction', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
+                                Text('Audio Preview', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                              ],
+                            ),
                           ),
-                        ),
-                        const Icon(Icons.graphic_eq_rounded, color: AppColors.primaryAccent, size: 24),
-                      ],
+                          const Icon(Icons.graphic_eq_rounded, color: AppColors.primaryAccent, size: 24),
+                        ],
+                      ),
                     ),
-                  ),
 
                   const SizedBox(height: 24),
 
                   // STATS BAR
                   Row(
                     children: [
-                      Expanded(child: _buildStatCard('48', 'Voice Calls')),
+                      Expanded(child: _buildStatCard('${user['callsCount'] ?? 0}', 'Voice Calls')),
                       const SizedBox(width: 12),
-                      Expanded(child: _buildStatCard('14', 'Stages Hosted')),
+                      Expanded(child: _buildStatCard('${user['roomsHostedCount'] ?? 0}', 'Stages Hosted')),
                       const SizedBox(width: 12),
                       Expanded(child: _buildStatCard('🪙 ${authState.coinBalance}', 'Balance')),
                     ],

@@ -7,7 +7,11 @@ import { getSocketIo } from '../sockets/socketHandler';
 export class CallController {
   public static async initiateCall(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      const callerId = req.user?.id || 'user-elena-101';
+      const callerId = req.user?.id;
+      if (!callerId) {
+        res.status(401).json({ success: false, error: { message: 'Unauthorized' } });
+        return;
+      }
       const { receiverId } = req.body;
 
       if (!receiverId) {
@@ -120,7 +124,11 @@ export class CallController {
 
   public static async acceptCall(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      const receiverId = req.user?.id || 'user-elena-101';
+      const receiverId = req.user?.id;
+      if (!receiverId) {
+        res.status(401).json({ success: false, error: { message: 'Unauthorized' } });
+        return;
+      }
       const { callId } = req.body;
 
       const call = LocalDbStore.calls.get(callId);
@@ -243,7 +251,11 @@ export class CallController {
 
   public static async getCallHistory(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      const userId = req.user?.id || 'user-elena-101';
+      const userId = req.user?.id;
+      if (!userId) {
+        res.status(401).json({ success: false, error: { message: 'Unauthorized' } });
+        return;
+      }
       const history = LocalDbStore.callHistory.filter(
         h => h.callerId === userId || h.receiverId === userId
       );
@@ -257,7 +269,11 @@ export class CallController {
   // Favourites
   public static async toggleFavourite(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      const userId = req.user?.id || 'user-elena-101';
+      const userId = req.user?.id;
+      if (!userId) {
+        res.status(401).json({ success: false, error: { message: 'Unauthorized' } });
+        return;
+      }
       const { targetUserId } = req.body;
 
       if (!targetUserId) {
@@ -284,7 +300,11 @@ export class CallController {
 
   public static async getFavourites(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      const userId = req.user?.id || 'user-elena-101';
+      const userId = req.user?.id;
+      if (!userId) {
+        res.status(401).json({ success: false, error: { message: 'Unauthorized' } });
+        return;
+      }
       const favList: any[] = [];
 
       for (const item of LocalDbStore.favourites) {

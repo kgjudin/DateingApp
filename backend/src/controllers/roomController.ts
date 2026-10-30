@@ -16,7 +16,11 @@ export class RoomController {
 
   public static async createRoom(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      const hostId = req.user?.id || 'user-elena-101';
+      const hostId = req.user?.id;
+      if (!hostId) {
+        res.status(401).json({ success: false, error: { message: 'Unauthorized' } });
+        return;
+      }
       const { groupId, title, topic } = req.body;
 
       if (!title) {
@@ -78,7 +82,11 @@ export class RoomController {
 
   public static async joinRoom(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      const userId = req.user?.id || 'user-marcus-102';
+      const userId = req.user?.id;
+      if (!userId) {
+        res.status(401).json({ success: false, error: { message: 'Unauthorized' } });
+        return;
+      }
       const id = String(req.params.id);
 
       const room = LocalDbStore.rooms.get(id);
@@ -138,7 +146,11 @@ export class RoomController {
 
   public static async raiseHand(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      const userId = req.user?.id || 'user-marcus-102';
+      const userId = req.user?.id;
+      if (!userId) {
+        res.status(401).json({ success: false, error: { message: 'Unauthorized' } });
+        return;
+      }
       const id = String(req.params.id);
 
       const room = LocalDbStore.rooms.get(id);

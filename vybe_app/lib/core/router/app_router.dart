@@ -74,7 +74,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/chat/:id',
         builder: (context, state) {
           final id = state.pathParameters['id'] ?? '';
-          return ChatScreen(otherUserId: id, otherUserName: 'Marcus Chen');
+          final extra = state.extra as Map<String, dynamic>?;
+          final name = extra?['name'] as String? ?? 'Conversation';
+          return ChatScreen(otherUserId: id, otherUserName: name);
         },
       ),
       GoRoute(

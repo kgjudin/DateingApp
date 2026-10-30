@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
-import '../../../../core/widgets/glass_container.dart';
 import '../../../wallet/presentation/widgets/gift_sheet.dart';
 import '../rooms_controller.dart';
 
@@ -216,47 +215,51 @@ class LiveVoiceRoomScreen extends ConsumerWidget {
                       ),
                       const SizedBox(height: 16),
 
-                      GridView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 4,
-                          childAspectRatio: 0.9,
-                          crossAxisSpacing: 12,
-                          mainAxisSpacing: 12,
-                        ),
-                        itemCount: 8,
-                        itemBuilder: (context, index) {
-                          final dummyAvatars = [
-                            'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=500',
-                            'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=500',
-                            'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=500',
-                            'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=500',
-                            'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=500',
-                            'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=500',
-                            'https://images.unsplash.com/photo-1531482615713-2afd69097998?w=500',
-                            'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=1000',
-                          ];
-                          final dummyNames = ['Maya', 'Dev', 'Chloe', 'Liam', 'Zoe', 'Lucas', 'Tara', 'Sam'];
+                      if ((room['listeners'] as List? ?? []).isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 16),
+                          child: Center(
+                            child: Text(
+                              'No listeners currently in the room',
+                              style: TextStyle(color: AppColors.textMuted, fontSize: 13),
+                            ),
+                          ),
+                        )
+                      else
+                        GridView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 4,
+                            childAspectRatio: 0.9,
+                            crossAxisSpacing: 12,
+                            mainAxisSpacing: 12,
+                          ),
+                          itemCount: (room['listeners'] as List).length,
+                          itemBuilder: (context, index) {
+                            final listener = (room['listeners'] as List)[index];
+                            final avatar = listener['avatarUrl'] ?? '';
+                            final name = listener['name'] ?? listener['displayName'] ?? 'Listener';
 
-                          return Column(
-                            children: [
-                              CircleAvatar(
-                                radius: 24,
-                                backgroundColor: AppColors.secondaryBackground,
-                                backgroundImage: NetworkImage(dummyAvatars[index % dummyAvatars.length]),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                dummyNames[index % dummyNames.length],
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
-                              ),
-                            ],
-                          );
-                        },
-                      ),
+                            return Column(
+                              children: [
+                                CircleAvatar(
+                                  radius: 24,
+                                  backgroundColor: AppColors.secondaryBackground,
+                                  backgroundImage: avatar.isNotEmpty ? NetworkImage(avatar) : null,
+                                  child: avatar.isEmpty ? const Icon(Icons.person, color: AppColors.textMuted) : null,
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
+                                ),
+                              ],
+                            );
+                          },
+                        ),
 
                       const SizedBox(height: 100),
                     ],
@@ -299,7 +302,7 @@ class LiveVoiceRoomScreen extends ConsumerWidget {
                           isScrollControlled: true,
                           builder: (ctx) => GiftBottomSheet(
                             roomId: roomId,
-                            receiverId: room['hostId'] ?? 'user-elena-101',
+                            receiverId: room['hostId'] ?? '',
                             receiverName: room['hostName'] ?? 'Host',
                           ),
                         );

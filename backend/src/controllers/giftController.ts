@@ -14,7 +14,11 @@ export class GiftController {
 
   public static async sendGift(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      const senderId = req.user?.id || 'user-elena-101';
+      const senderId = req.user?.id;
+      if (!senderId) {
+        res.status(401).json({ success: false, error: { message: 'Unauthorized' } });
+        return;
+      }
       const { receiverId, giftId, roomId, message } = req.body;
 
       if (!receiverId || !giftId) {
@@ -156,7 +160,11 @@ export class GiftController {
 export class WalletController {
   public static async getWallet(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      const userId = req.user?.id || 'user-elena-101';
+      const userId = req.user?.id;
+      if (!userId) {
+        res.status(401).json({ success: false, error: { message: 'Unauthorized' } });
+        return;
+      }
       let wallet = LocalDbStore.wallets.get(userId);
       if (!wallet) {
         wallet = { balance: 100, earned: 100, spent: 0 };
@@ -181,7 +189,11 @@ export class WalletController {
 
   public static async purchaseCoins(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      const userId = req.user?.id || 'user-elena-101';
+      const userId = req.user?.id;
+      if (!userId) {
+        res.status(401).json({ success: false, error: { message: 'Unauthorized' } });
+        return;
+      }
       const { coinsAmount, packageId, receiptToken } = req.body;
 
       const amount = parseInt(coinsAmount, 10);

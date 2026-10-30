@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/network/api_client.dart';
-import '../../../../core/network/socket_service.dart';
 import '../../../../core/theme/app_colors.dart';
-import '../../../../core/widgets/glass_container.dart';
 import '../../../auth/presentation/auth_controller.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
@@ -45,22 +43,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       }
     } catch (_) {}
 
-    // Mock initial messages
     setState(() {
-      _messages.addAll([
-        {
-          'id': 'm1',
-          'senderId': widget.otherUserId,
-          'content': 'Hey! Great voice session in the Midnight Philosophers room.',
-          'createdAt': '2:45 PM',
-        },
-        {
-          'id': 'm2',
-          'senderId': ref.read(authControllerProvider).user?['id'] ?? 'user-elena-101',
-          'content': 'Thanks Marcus! Loved your perspective on AI and social interaction.',
-          'createdAt': '2:47 PM',
-        },
-      ]);
       _isLoading = false;
     });
   }
@@ -69,7 +52,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final text = _messageController.text.trim();
     if (text.isEmpty) return;
 
-    final myId = ref.read(authControllerProvider).user?['id'] ?? 'user-elena-101';
+    final myId = ref.read(authControllerProvider).user?['id'] ?? '';
     final newMsg = {
       'id': 'm_${DateTime.now().millisecondsSinceEpoch}',
       'senderId': myId,
@@ -90,7 +73,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final myId = ref.watch(authControllerProvider).user?['id'] ?? 'user-elena-101';
+    final myId = ref.watch(authControllerProvider).user?['id'] ?? '';
 
     return Scaffold(
       backgroundColor: AppColors.primaryBackground,
@@ -118,7 +101,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       body: Column(
         children: [
           Expanded(
-            child: ListView.builder(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator(color: AppColors.primaryAccent))
+                : _messages.isEmpty
+                    ? const Center(
+                        child: Text(
+                          'No messages yet. Send a greeting to start chatting!',
+                          style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                        ),
+                      )
+                    : ListView.builder(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               itemCount: _messages.length,
               itemBuilder: (context, index) {

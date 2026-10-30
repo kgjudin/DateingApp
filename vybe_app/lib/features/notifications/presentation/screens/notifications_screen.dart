@@ -33,37 +33,9 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
       }
     } catch (_) {}
 
-    // Mock initial notifications
+    // Real empty notifications state
     setState(() {
-      _notifications = [
-        {
-          'id': 'n1',
-          'type': 'gift_received',
-          'title': 'Gift Received! 🎁',
-          'body': 'Marcus Chen sent you a Heart (🪙 50 coins) in Midnight Philosophers.',
-          'createdAt': '12 mins ago',
-          'icon': Icons.favorite_rounded,
-          'color': AppColors.secondaryAccent,
-        },
-        {
-          'id': 'n2',
-          'type': 'favourite_online',
-          'title': 'Favourite User Online',
-          'body': 'Sophia Ray is now online on the voice radar. Start a conversation!',
-          'createdAt': '1 hour ago',
-          'icon': Icons.radar_rounded,
-          'color': AppColors.online,
-        },
-        {
-          'id': 'n3',
-          'type': 'room_live',
-          'title': 'Live Stage Started',
-          'body': 'Future & Tech Minds started a live audio stage: "Will AI Replace Social Media?".',
-          'createdAt': '3 hours ago',
-          'icon': Icons.mic_rounded,
-          'color': AppColors.primaryAccent,
-        },
-      ];
+      _notifications = [];
       _isLoading = false;
     });
   }

@@ -36,28 +36,9 @@ class _FavouritesScreenState extends ConsumerState<FavouritesScreen> {
       }
     } catch (_) {}
 
-    // Mock initial favourites
+    // Real empty state
     setState(() {
-      _favourites = [
-        {
-          'id': 'user-marcus-102',
-          'displayName': 'Marcus Chen',
-          'username': 'marcus_code',
-          'avatarUrl': 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=500',
-          'location': 'San Francisco, USA',
-          'status': 'online',
-          'bio': 'AI researcher and late-night gamer.',
-        },
-        {
-          'id': 'user-priya-105',
-          'displayName': 'Priya Sharma',
-          'username': 'priya_talks',
-          'avatarUrl': 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=500',
-          'location': 'Mumbai, India',
-          'status': 'online',
-          'bio': 'Stand-up comedy writer & travel photographer.',
-        },
-      ];
+      _favourites = [];
       _isLoading = false;
     });
   }
