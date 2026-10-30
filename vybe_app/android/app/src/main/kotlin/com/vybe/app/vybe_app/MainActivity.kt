@@ -1,0 +1,5 @@
+package com.vybe.app.vybe_app
+
+import io.flutter.embedding.android.FlutterActivity
+
+class MainActivity : FlutterActivity()
