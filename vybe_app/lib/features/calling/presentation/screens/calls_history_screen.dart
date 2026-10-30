@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/glass_container.dart';
+import '../../../auth/presentation/auth_controller.dart';
 import '../calling_controller.dart';
 
 class CallsHistoryScreen extends ConsumerStatefulWidget {
@@ -24,6 +25,14 @@ class _CallsHistoryScreenState extends ConsumerState<CallsHistoryScreen> {
   }
 
   Future<void> _fetchHistory() async {
+    final auth = ref.read(authControllerProvider);
+    if (!auth.isAuthenticated) {
+      setState(() {
+        _history = [];
+        _isLoading = false;
+      });
+      return;
+    }
     try {
       final res = await ref.read(apiClientProvider).get('/calls/history');
       if (res is List) {

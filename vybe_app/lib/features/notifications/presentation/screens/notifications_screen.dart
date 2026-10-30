@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/glass_container.dart';
+import '../../../auth/presentation/auth_controller.dart';
 
 class NotificationsScreen extends ConsumerStatefulWidget {
   const NotificationsScreen({super.key});
@@ -22,6 +23,14 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
   }
 
   Future<void> _fetchNotifications() async {
+    final auth = ref.read(authControllerProvider);
+    if (!auth.isAuthenticated) {
+      setState(() {
+        _notifications = [];
+        _isLoading = false;
+      });
+      return;
+    }
     try {
       final res = await ref.read(apiClientProvider).get('/notifications');
       if (res is List && res.isNotEmpty) {

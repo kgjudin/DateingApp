@@ -3,8 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/glass_container.dart';
-import '../../../../core/network/api_client.dart';
-import '../../../auth/presentation/auth_controller.dart';
 import '../rooms_controller.dart';
 
 class RoomsScreen extends ConsumerWidget {
@@ -349,39 +347,19 @@ class RoomsScreen extends ConsumerWidget {
               width: double.infinity,
               child: ElevatedButton(
                 onPressed: () async {
-                  final currentUser = ref.read(authControllerProvider).user;
-                  final hostName = currentUser?['displayName'] ?? currentUser?['username'] ?? 'Host';
-                  final hostAvatar = currentUser?['avatarUrl'] ?? '';
-                  final hostId = currentUser?['id'] ?? '';
                   final roomTitle = titleController.text.trim().isEmpty ? 'Open Voice Stage' : titleController.text.trim();
                   final roomTopic = topicController.text.trim().isEmpty ? 'General' : topicController.text.trim();
 
-                  final newRoom = {
-                    'id': 'room_${DateTime.now().millisecondsSinceEpoch}',
-                    'title': roomTitle,
-                    'topic': roomTopic,
-                    'groupName': 'Live Stage',
-                    'hostId': hostId,
-                    'hostName': hostName,
-                    'hostAvatar': hostAvatar,
-                    'listenersCount': 1,
-                    'speakersCount': 1,
-                    'speakers': [
-                      {'userId': hostId, 'name': hostName, 'role': 'host', 'isMuted': false, 'avatarUrl': hostAvatar},
-                    ]
-                  };
-
-                  try {
-                    await ref.read(apiClientProvider).post('/rooms/create', body: {
-                      'title': roomTitle,
-                      'topic': roomTopic,
-                    });
-                  } catch (_) {}
+                  final createdRoom = await ref.read(roomsControllerProvider.notifier).createRoom(
+                        title: roomTitle,
+                        topic: roomTopic,
+                      );
 
                   if (context.mounted) {
                     Navigator.pop(ctx);
-                    ref.read(roomsControllerProvider.notifier).joinLiveRoom(newRoom);
-                    context.push('/room/${newRoom['id']}');
+                    if (createdRoom != null) {
+                      context.push('/room/${createdRoom['id']}');
+                    }
                   }
                 },
                 child: const Text('Go Live Now'),

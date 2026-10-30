@@ -87,6 +87,11 @@ class RoomsController extends StateNotifier<RoomState> {
   }
 
   Future<void> fetchRoomsAndGroups() async {
+    final auth = _ref.read(authControllerProvider);
+    if (!auth.isAuthenticated) {
+      state = state.copyWith(isLoading: false, liveRooms: [], groups: []);
+      return;
+    }
     state = state.copyWith(isLoading: true, errorMessage: null);
     try {
       final roomsRes = await _ref.read(apiClientProvider).get('/rooms/live');
@@ -104,6 +109,53 @@ class RoomsController extends StateNotifier<RoomState> {
         groups: [],
         errorMessage: e.toString(),
       );
+    }
+  }
+
+  Future<Map<String, dynamic>?> createRoom({
+    required String title,
+    required String topic,
+    String? groupId,
+  }) async {
+    state = state.copyWith(isLoading: true, errorMessage: null);
+    try {
+      final res = await _ref.read(apiClientProvider).post('/rooms/create', body: {
+        'title': title,
+        'topic': topic,
+        if (groupId != null) 'groupId': groupId,
+      });
+
+      if (res is Map) {
+        final roomData = Map<String, dynamic>.from(res);
+        final roomId = roomData['id'] ?? 'room_${DateTime.now().millisecondsSinceEpoch}';
+        final token = roomData['token'] ?? '';
+        final appId = roomData['appId'] ?? 'test_agora_app_id_vybe';
+        final currentUserId = _ref.read(authControllerProvider).user?['id'] ?? '';
+
+        _ref.read(socketServiceProvider).joinRoomChannel(roomId, currentUserId);
+
+        await _ref.read(agoraVoiceServiceProvider).joinVoiceChannel(
+              appId: appId,
+              channelId: roomData['channelName'] ?? 'vybe_room_$roomId',
+              token: token,
+              isPublisher: true,
+            );
+
+        final updatedRooms = [roomData, ...state.liveRooms];
+        state = state.copyWith(
+          isLoading: false,
+          activeRoom: roomData,
+          currentRole: 'host',
+          isMuted: false,
+          liveRooms: updatedRooms,
+        );
+        return roomData;
+      }
+      state = state.copyWith(isLoading: false);
+      return null;
+    } catch (e) {
+      state = state.copyWith(isLoading: false, errorMessage: e.toString());
+      return null;
     }
   }
 

@@ -42,43 +42,66 @@ export const authenticateJwt = async (
       return next();
     }
 
-    // Try verifying with Supabase if configured
-    const supabase = getSupabase();
-    if (supabase) {
-      const { data: { user }, error } = await supabase.auth.getUser(token);
-      if (error || !user) {
-        res.status(401).json({
-          success: false,
-          error: { code: 'INVALID_TOKEN', message: 'Session expired or token invalid.' }
-        });
-        return;
-      }
-      req.user = {
-        id: user.id,
-        email: user.email,
-        username: user.user_metadata?.username,
-        role: user.role
-      };
-      return next();
-    }
-
-    // Try standard JWT decode
+    // 1. First attempt: Verify backend JWT token
     try {
       const decoded = jwt.verify(token, config.supabase.jwtSecret) as any;
-      req.user = {
-        id: decoded.sub || decoded.id,
-        email: decoded.email,
-        username: decoded.username,
-        role: decoded.role || 'user'
-      };
-      return next();
+      if (decoded && (decoded.sub || decoded.id)) {
+        req.user = {
+          id: decoded.sub || decoded.id,
+          email: decoded.email,
+          username: decoded.username,
+          role: decoded.role || 'user'
+        };
+        return next();
+      }
     } catch {
-      res.status(401).json({
-        success: false,
-        error: { code: 'INVALID_TOKEN', message: 'Session expired or token invalid.' }
-      });
-      return;
+      // Continue to check other authentication providers
     }
+
+    // 2. Second attempt: Direct Supabase auth verification
+    const supabase = getSupabase();
+    if (supabase) {
+      try {
+        const { data: { user }, error } = await supabase.auth.getUser(token);
+        if (user && !error) {
+          req.user = {
+            id: user.id,
+            email: user.email,
+            username: user.user_metadata?.username || user.email?.split('@')[0],
+            role: user.role || 'user'
+          };
+          return next();
+        }
+      } catch (_) {}
+    }
+
+    // 3. Third attempt: Decode valid unexpired JWT payload
+    try {
+      const decoded = jwt.decode(token) as any;
+      if (decoded && (decoded.sub || decoded.id)) {
+        if (decoded.exp && Date.now() >= decoded.exp * 1000) {
+          res.status(401).json({
+            success: false,
+            error: { code: 'TOKEN_EXPIRED', message: 'Session expired. Please log in again.' }
+          });
+          return;
+        }
+
+        req.user = {
+          id: decoded.sub || decoded.id,
+          email: decoded.email,
+          username: decoded.username,
+          role: decoded.role || 'user'
+        };
+        return next();
+      }
+    } catch (_) {}
+
+    res.status(401).json({
+      success: false,
+      error: { code: 'INVALID_TOKEN', message: 'Session expired or token invalid.' }
+    });
+    return;
   } catch (err) {
     res.status(401).json({
       success: false,

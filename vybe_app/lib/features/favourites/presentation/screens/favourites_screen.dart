@@ -5,6 +5,7 @@ import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/glass_container.dart';
 import '../../../../core/widgets/online_badge.dart';
+import '../../../auth/presentation/auth_controller.dart';
 import '../../../calling/presentation/calling_controller.dart';
 
 class FavouritesScreen extends ConsumerStatefulWidget {
@@ -25,6 +26,14 @@ class _FavouritesScreenState extends ConsumerState<FavouritesScreen> {
   }
 
   Future<void> _fetchFavourites() async {
+    final auth = ref.read(authControllerProvider);
+    if (!auth.isAuthenticated) {
+      setState(() {
+        _favourites = [];
+        _isLoading = false;
+      });
+      return;
+    }
     try {
       final res = await ref.read(apiClientProvider).get('/favourites');
       if (res is List) {

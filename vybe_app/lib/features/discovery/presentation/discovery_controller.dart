@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
+import '../../auth/presentation/auth_controller.dart';
 
 class DiscoveryState {
   final bool isLoading;
@@ -57,6 +58,17 @@ class DiscoveryController extends StateNotifier<DiscoveryState> {
   }
 
   Future<void> fetchFeed() async {
+    final auth = _ref.read(authControllerProvider);
+    if (!auth.isAuthenticated) {
+      state = state.copyWith(
+        isLoading: false,
+        onlineNow: [],
+        basedOnInterests: [],
+        peopleYouMayLike: [],
+        newPeople: [],
+      );
+      return;
+    }
     state = state.copyWith(isLoading: true, errorMessage: null);
     try {
       final res = await _ref.read(apiClientProvider).get('/discovery/feed');

@@ -22,6 +22,13 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
   }
 
   Future<void> _fetchWalletData() async {
+    final auth = ref.read(authControllerProvider);
+    if (!auth.isAuthenticated) {
+      setState(() {
+        _transactions = [];
+      });
+      return;
+    }
     try {
       final res = await ref.read(apiClientProvider).get('/wallet');
       if (res is Map) {
