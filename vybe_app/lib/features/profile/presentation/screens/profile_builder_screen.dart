@@ -18,13 +18,17 @@ class ProfileBuilderScreen extends ConsumerStatefulWidget {
 class _ProfileBuilderScreenState extends ConsumerState<ProfileBuilderScreen> {
   int _currentStep = 0;
   final int _totalSteps = 6;
+  final _step1FormKey = GlobalKey<FormState>();
 
-  // Step 1: Basic Info
-  final _displayNameController = TextEditingController(text: 'Alex Rivers');
-  final _usernameController = TextEditingController(text: 'alex_rivers');
-  final _bioController = TextEditingController(text: 'Late-night thinker, vinyl seeker, and sound explorer. Let\'s talk about good stories and music.');
-  final _locationController = TextEditingController(text: 'New York, USA');
-  String _selectedGender = 'male';
+  // Step 1: Real Account Credentials & Basic Info (All Empty by default!)
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _usernameController = TextEditingController();
+  final _displayNameController = TextEditingController();
+  final _locationController = TextEditingController();
+  final _bioController = TextEditingController();
+  bool _obscurePassword = true;
+  String _selectedGender = 'prefer_not_to_say';
 
   // Step 2: Voice Discovery Preferences
   final List<String> _preferredGenders = ['everyone'];
@@ -32,34 +36,37 @@ class _ProfileBuilderScreenState extends ConsumerState<ProfileBuilderScreen> {
   // Step 3: Photos & Visuals
   String _avatarUrl = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=500&auto=format&fit=crop&q=80';
   String _coverUrl = 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=1000&auto=format&fit=crop&q=80';
-  final List<String> _galleryPhotos = [
-    'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=500&auto=format&fit=crop&q=80',
-    'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=500&auto=format&fit=crop&q=80',
-  ];
+  final List<String> _galleryPhotos = [];
 
-  // Step 4: Interests & Tags
+  // Step 4: Interests & Tags (Start with empty selection)
   final List<String> _availableInterests = [
     'Music', 'Movies', 'Travelling', 'Technology', 'Gaming', 'Sports',
     'Photography', 'Food', 'Business', 'Art', 'Fitness', 'Books',
     'Nature', 'Entertainment', 'Culture', 'Learning', 'Lifestyle'
   ];
-  final Set<String> _selectedInterests = {'Music', 'Travelling', 'Art', 'Technology'};
+  final Set<String> _selectedInterests = {};
 
   // Step 5: Voice Introduction
   bool _isRecording = false;
-  bool _hasVoiceIntro = true;
+  bool _hasVoiceIntro = false;
   bool _isPlayingIntro = false;
-  int _voiceIntroDuration = 15;
+  final int _voiceIntroDuration = 15;
 
-  // Step 6: Topics & Conversation Starters
-  final List<String> _conversationStarters = [
-    'What song feels like home to you?',
-    'If you could live anywhere for 3 months, where?',
-    'What is the weirdest rabbit hole you went down recently?',
-  ];
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    _usernameController.dispose();
+    _displayNameController.dispose();
+    _locationController.dispose();
+    _bioController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
+    final authState = ref.watch(authControllerProvider);
+
     return Scaffold(
       backgroundColor: AppColors.primaryBackground,
       appBar: AppBar(
@@ -93,10 +100,38 @@ class _ProfileBuilderScreenState extends ConsumerState<ProfileBuilderScreen> {
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-                child: _buildCurrentStepView(),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (authState.errorMessage != null && _currentStep == _totalSteps - 1) ...[
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        margin: const EdgeInsets.only(bottom: 16),
+                        decoration: BoxDecoration(
+                          color: AppColors.error.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: AppColors.error.withOpacity(0.3)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.error_outline_rounded, color: AppColors.error, size: 20),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                authState.errorMessage!,
+                                style: const TextStyle(color: AppColors.error, fontSize: 13),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    _buildCurrentStepView(),
+                  ],
+                ),
               ),
             ),
-            _buildBottomBar(),
+            _buildBottomBar(authState),
           ],
         ),
       ),
@@ -106,7 +141,7 @@ class _ProfileBuilderScreenState extends ConsumerState<ProfileBuilderScreen> {
   Widget _buildCurrentStepView() {
     switch (_currentStep) {
       case 0:
-        return _buildStep1BasicInfo();
+        return _buildStep1AccountAndBasic();
       case 1:
         return _buildStep2DiscoveryPreferences();
       case 2:
@@ -122,43 +157,156 @@ class _ProfileBuilderScreenState extends ConsumerState<ProfileBuilderScreen> {
     }
   }
 
-  // STEP 1: BASIC INFO
-  Widget _buildStep1BasicInfo() {
+  // STEP 1: ACCOUNT CREDENTIALS & BASIC INFO
+  Widget _buildStep1AccountAndBasic() {
+    return Form(
+      key: _step1FormKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Create Your Account',
+            style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: Colors.white),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Enter your real login credentials and voice profile details.',
+            style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 24),
+
+          // Email Field
+          _buildValidatedField(
+            label: 'Email Address *',
+            controller: _emailController,
+            hint: 'name@example.com',
+            icon: Icons.email_outlined,
+            keyboardType: TextInputType.emailAddress,
+            validator: (val) {
+              if (val == null || val.trim().isEmpty) return 'Email is required';
+              if (!val.contains('@') || !val.contains('.')) return 'Enter a valid email';
+              return null;
+            },
+          ),
+          const SizedBox(height: 16),
+
+          // Password Field
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Password *', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white, fontSize: 14)),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: _passwordController,
+                obscureText: _obscurePassword,
+                style: const TextStyle(color: Colors.white),
+                validator: (val) {
+                  if (val == null || val.trim().isEmpty) return 'Password is required';
+                  if (val.trim().length < 6) return 'Password must be at least 6 characters';
+                  return null;
+                },
+                decoration: InputDecoration(
+                  hintText: 'Create a password (min 6 chars)',
+                  prefixIcon: const Icon(Icons.lock_outline_rounded, color: AppColors.textMuted, size: 20),
+                  suffixIcon: IconButton(
+                    icon: Icon(_obscurePassword ? Icons.visibility_off_rounded : Icons.visibility_rounded, color: AppColors.textMuted),
+                    onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // Username Field
+          _buildValidatedField(
+            label: 'Username *',
+            controller: _usernameController,
+            hint: 'e.g. alex24 (unique @handle)',
+            icon: Icons.alternate_email_rounded,
+            validator: (val) {
+              if (val == null || val.trim().isEmpty) return 'Username is required';
+              if (val.trim().length < 3) return 'Username must be at least 3 characters';
+              return null;
+            },
+          ),
+          const SizedBox(height: 16),
+
+          // Display Name Field
+          _buildValidatedField(
+            label: 'Display Name *',
+            controller: _displayNameController,
+            hint: 'How people see you (e.g. Alex)',
+            icon: Icons.person_rounded,
+            validator: (val) {
+              if (val == null || val.trim().isEmpty) return 'Display Name is required';
+              return null;
+            },
+          ),
+          const SizedBox(height: 16),
+
+          // Location Field
+          _buildValidatedField(
+            label: 'Location (Optional)',
+            controller: _locationController,
+            hint: 'e.g. New York, USA',
+            icon: Icons.location_on_rounded,
+          ),
+          const SizedBox(height: 16),
+
+          // Short Bio Field
+          _buildValidatedField(
+            label: 'Short Bio (Optional)',
+            controller: _bioController,
+            hint: 'Tell others what you love talking about...',
+            icon: Icons.edit_note_rounded,
+            maxLines: 3,
+          ),
+          const SizedBox(height: 20),
+
+          // Gender Selection
+          const Text('Gender', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white, fontSize: 14)),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _buildGenderChip('male', 'Male'),
+              _buildGenderChip('female', 'Female'),
+              _buildGenderChip('non_binary', 'Non-Binary'),
+              _buildGenderChip('prefer_not_to_say', 'Prefer Not to Say'),
+              _buildGenderChip('other', 'Other'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildValidatedField({
+    required String label,
+    required TextEditingController controller,
+    required String hint,
+    required IconData icon,
+    int maxLines = 1,
+    TextInputType? keyboardType,
+    String? Function(String?)? validator,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Your Voice Identity',
-          style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: Colors.white),
-        ),
-        const SizedBox(height: 6),
-        const Text(
-          'Introduce yourself to the VYBE community.',
-          style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
-        ),
-        const SizedBox(height: 24),
-
-        _buildTextField('Display Name', _displayNameController, 'How people will know you', Icons.person_rounded),
-        const SizedBox(height: 16),
-        _buildTextField('Username', _usernameController, 'Unique @handle', Icons.alternate_email_rounded),
-        const SizedBox(height: 16),
-        _buildTextField('Location', _locationController, 'City, Country', Icons.location_on_rounded),
-        const SizedBox(height: 16),
-        _buildTextField('Short Bio', _bioController, 'What gives you energy?', Icons.edit_note_rounded, maxLines: 3),
-        const SizedBox(height: 20),
-
-        const Text('Gender', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white, fontSize: 14)),
-        const SizedBox(height: 10),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            _buildGenderChip('male', 'Male'),
-            _buildGenderChip('female', 'Female'),
-            _buildGenderChip('non_binary', 'Non-Binary'),
-            _buildGenderChip('prefer_not_to_say', 'Prefer Not to Say'),
-            _buildGenderChip('other', 'Other'),
-          ],
+        Text(label, style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.white, fontSize: 14)),
+        const SizedBox(height: 8),
+        TextFormField(
+          controller: controller,
+          maxLines: maxLines,
+          keyboardType: keyboardType,
+          validator: validator,
+          style: const TextStyle(color: Colors.white),
+          decoration: InputDecoration(
+            hintText: hint,
+            prefixIcon: Icon(icon, color: AppColors.textMuted, size: 20),
+          ),
         ),
       ],
     );
@@ -205,23 +353,6 @@ class _ProfileBuilderScreenState extends ConsumerState<ProfileBuilderScreen> {
         _buildPrefOption('men', 'Men', 'Only discover men on the voice radar', Icons.male_rounded),
         const SizedBox(height: 12),
         _buildPrefOption('non_binary', 'Non-Binary', 'Discover non-binary individuals', Icons.transgender_rounded),
-
-        const SizedBox(height: 28),
-        GlassContainer(
-          padding: const EdgeInsets.all(14),
-          child: const Row(
-            children: [
-              Icon(Icons.lock_outline_rounded, color: AppColors.primaryAccent, size: 20),
-              SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'Your discovery preferences are private and can be adjusted at any time in settings.',
-                  style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
-                ),
-              ),
-            ],
-          ),
-        ),
       ],
     );
   }
@@ -289,100 +420,61 @@ class _ProfileBuilderScreenState extends ConsumerState<ProfileBuilderScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          'Profile Appearance',
+          'Profile Photos',
           style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: Colors.white),
         ),
         const SizedBox(height: 6),
         const Text(
-          'Add high quality profile and cover photos to make your card stand out.',
+          'Choose your profile visual style.',
           style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
         ),
         const SizedBox(height: 24),
 
-        // Cover & Avatar Stack Preview
-        Container(
-          height: 180,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            image: DecorationImage(
-              image: NetworkImage(_coverUrl),
-              fit: BoxFit.cover,
-            ),
-          ),
+        Center(
           child: Stack(
-            clipBehavior: Clip.none,
             children: [
-              Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(20),
-                  gradient: LinearGradient(
-                    colors: [Colors.black.withOpacity(0.2), Colors.black.withOpacity(0.7)],
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                  ),
+              CircleAvatar(
+                radius: 54,
+                backgroundColor: AppColors.primaryAccent,
+                child: CircleAvatar(
+                  radius: 50,
+                  backgroundImage: NetworkImage(_avatarUrl),
                 ),
               ),
               Positioned(
-                bottom: 12,
-                left: 16,
-                child: Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 36,
-                      backgroundColor: AppColors.primaryAccent,
-                      child: CircleAvatar(
-                        radius: 34,
-                        backgroundImage: NetworkImage(_avatarUrl),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        // Demo avatar switcher
-                        setState(() {
-                          _avatarUrl = 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=500&auto=format&fit=crop&q=80';
-                        });
-                      },
-                      icon: const Icon(Icons.cached_rounded, size: 16),
-                      label: const Text('Change Avatar', style: TextStyle(fontSize: 12)),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.secondaryBackground.withOpacity(0.85),
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                      ),
-                    ),
-                  ],
+                bottom: 0,
+                right: 0,
+                child: Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: const BoxDecoration(
+                    color: AppColors.primaryAccent,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.camera_alt_rounded, color: Colors.white, size: 18),
                 ),
               ),
             ],
           ),
         ),
 
-        const SizedBox(height: 32),
-        const Text('Photo Gallery', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 16)),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            ..._galleryPhotos.map((url) => Container(
-              width: 80,
-              height: 80,
-              margin: const EdgeInsets.only(right: 12),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(16),
-                image: DecorationImage(image: NetworkImage(url), fit: BoxFit.cover),
-                border: Border.all(color: AppColors.glassBorder),
-              ),
-            )),
-            Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                color: AppColors.secondaryBackground,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppColors.glassBorder, style: BorderStyle.solid),
-              ),
-              child: const Icon(Icons.add_photo_alternate_rounded, color: AppColors.primaryAccent),
-            ),
-          ],
+        const SizedBox(height: 20),
+        Center(
+          child: TextButton.icon(
+            onPressed: () {
+              // Cycle through attractive avatars
+              final avatars = [
+                'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=500',
+                'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=500',
+                'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=500',
+                'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=500',
+                'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=500',
+              ];
+              final nextIndex = (avatars.indexOf(_avatarUrl) + 1) % avatars.length;
+              setState(() => _avatarUrl = avatars[nextIndex]);
+            },
+            icon: const Icon(Icons.refresh_rounded, size: 16),
+            label: const Text('Shuffle Avatar Style'),
+          ),
         ),
       ],
     );
@@ -394,12 +486,12 @@ class _ProfileBuilderScreenState extends ConsumerState<ProfileBuilderScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          'What Sparks Your Interest?',
+          'Select Your Interests',
           style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: Colors.white),
         ),
         const SizedBox(height: 6),
         const Text(
-          'Select at least 3 topics to discover people who love talking about the same things.',
+          'Select at least 1 topic to discover people sharing your passions.',
           style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
         ),
         const SizedBox(height: 24),
@@ -448,12 +540,11 @@ class _ProfileBuilderScreenState extends ConsumerState<ProfileBuilderScreen> {
         ),
         const SizedBox(height: 6),
         const Text(
-          'A 10–20 second voice intro lets potential connections hear your energy, laughter, and tone.',
+          'Introduce yourself in your own voice! Tap to record a 10–20s greeting.',
           style: TextStyle(fontSize: 14, color: AppColors.textSecondary, height: 1.4),
         ),
         const SizedBox(height: 32),
 
-        // Audio Recorder Card
         GlassContainer(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
           child: Column(
@@ -463,16 +554,10 @@ class _ProfileBuilderScreenState extends ConsumerState<ProfileBuilderScreen> {
                 barCount: 22,
                 maxHeight: 70,
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
               Text(
-                _isRecording ? '00:08 / 00:20 (Recording...)' : '00:14 Preview Audio',
+                _isRecording ? 'Recording (00:08)...' : (_hasVoiceIntro ? '00:15 Voice Intro Recorded' : 'Tap mic to record intro'),
                 style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w700, fontSize: 16),
-              ),
-              const SizedBox(height: 6),
-              const Text(
-                '"Hey! I love music, travelling, late-night conversations and meeting interesting people."',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: AppColors.textMuted, fontStyle: FontStyle.italic, fontSize: 13),
               ),
               const SizedBox(height: 28),
               Row(
@@ -482,7 +567,7 @@ class _ProfileBuilderScreenState extends ConsumerState<ProfileBuilderScreen> {
                     onTap: () {
                       setState(() {
                         _isRecording = !_isRecording;
-                        if (_isRecording) _isPlayingIntro = false;
+                        if (!_isRecording) _hasVoiceIntro = true;
                       });
                     },
                     child: Container(
@@ -529,130 +614,84 @@ class _ProfileBuilderScreenState extends ConsumerState<ProfileBuilderScreen> {
     );
   }
 
-  // STEP 6: PREVIEW
+  // STEP 6: REVIEW & PUBLISH
   Widget _buildStep6ProfilePreview() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          'Profile Preview',
+          'Confirm Your Profile',
           style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: Colors.white),
         ),
         const SizedBox(height: 6),
         const Text(
-          'Here is how you appear to others on the VYBE discovery radar.',
+          'Here is your voice discovery card. Tap "Create Account" below to register!',
           style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
         ),
         const SizedBox(height: 24),
 
-        // Live Discovery Card Preview
         GlassContainer(
-          padding: EdgeInsets.zero,
+          padding: const EdgeInsets.all(20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Stack(
+              Row(
                 children: [
-                  ClipRRect(
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-                    child: Image.network(
-                      _coverUrl,
-                      height: 140,
-                      width: double.infinity,
-                      fit: BoxFit.cover,
-                    ),
+                  Stack(
+                    children: [
+                      CircleAvatar(
+                        radius: 36,
+                        backgroundImage: NetworkImage(_avatarUrl),
+                      ),
+                      const Positioned(
+                        bottom: 0,
+                        right: 0,
+                        child: OnlineBadge(size: 14, isOnline: true),
+                      ),
+                    ],
                   ),
-                  Positioned(
-                    bottom: 12,
-                    left: 16,
-                    child: Row(
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Stack(
-                          children: [
-                            CircleAvatar(
-                              radius: 36,
-                              backgroundColor: AppColors.primaryAccent,
-                              child: CircleAvatar(
-                                radius: 34,
-                                backgroundImage: NetworkImage(_avatarUrl),
-                              ),
-                            ),
-                            const Positioned(
-                              bottom: 2,
-                              right: 2,
-                              child: OnlineBadge(size: 14, isOnline: true),
-                            ),
-                          ],
+                        Text(
+                          _displayNameController.text.trim().isEmpty ? 'Your Name' : _displayNameController.text.trim(),
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18),
                         ),
-                        const SizedBox(width: 12),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              _displayNameController.text,
-                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18),
-                            ),
-                            Text(
-                              '@${_usernameController.text}',
-                              style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
-                            ),
-                          ],
+                        Text(
+                          '@${_usernameController.text.trim().isEmpty ? 'username' : _usernameController.text.trim()}',
+                          style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                        ),
+                        Text(
+                          _emailController.text.trim(),
+                          style: const TextStyle(color: AppColors.primaryAccentLight, fontSize: 12),
                         ),
                       ],
                     ),
                   ),
                 ],
               ),
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _bioController.text,
-                      style: const TextStyle(color: AppColors.textPrimary, fontSize: 14, height: 1.4),
-                    ),
-                    const SizedBox(height: 14),
-
-                    // Voice intro preview bar
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: AppColors.primaryAccent.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: AppColors.primaryAccent.withOpacity(0.3)),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.volume_up_rounded, color: AppColors.primaryAccent, size: 18),
-                          SizedBox(width: 8),
-                          Text('Voice Intro • 14s', style: TextStyle(color: AppColors.primaryAccentLight, fontWeight: FontWeight.w700, fontSize: 12)),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 14),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: _selectedInterests.map((interest) {
-                        return Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                          decoration: BoxDecoration(
-                            color: AppColors.secondaryBackground,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: AppColors.glassBorder),
-                          ),
-                          child: Text(
-                            '#$interest',
-                            style: const TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.w600),
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                  ],
+              const SizedBox(height: 16),
+              if (_bioController.text.trim().isNotEmpty) ...[
+                Text(
+                  _bioController.text.trim(),
+                  style: const TextStyle(color: AppColors.textPrimary, fontSize: 14, height: 1.4),
                 ),
+                const SizedBox(height: 12),
+              ],
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: _selectedInterests.map((t) => Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.secondaryBackground,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppColors.glassBorder),
+                  ),
+                  child: Text('#$t', style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                )).toList(),
               ),
             ],
           ),
@@ -661,26 +700,7 @@ class _ProfileBuilderScreenState extends ConsumerState<ProfileBuilderScreen> {
     );
   }
 
-  Widget _buildTextField(String label, TextEditingController controller, String hint, IconData icon, {int maxLines = 1}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.white, fontSize: 14)),
-        const SizedBox(height: 8),
-        TextField(
-          controller: controller,
-          maxLines: maxLines,
-          style: const TextStyle(color: Colors.white),
-          decoration: InputDecoration(
-            hintText: hint,
-            prefixIcon: Icon(icon, color: AppColors.textMuted, size: 20),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildBottomBar() {
+  Widget _buildBottomBar(AuthState authState) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: const BoxDecoration(
@@ -703,20 +723,36 @@ class _ProfileBuilderScreenState extends ConsumerState<ProfileBuilderScreen> {
           ],
           Expanded(
             child: GradientButton(
-              text: _currentStep == _totalSteps - 1 ? 'Publish & Enter VYBE' : 'Continue',
+              isLoading: authState.isLoading,
+              text: _currentStep == _totalSteps - 1 ? 'Create Account & Enter' : 'Continue',
               onPressed: () async {
+                // Validate Step 1 before proceeding
+                if (_currentStep == 0) {
+                  if (!(_step1FormKey.currentState?.validate() ?? false)) {
+                    return;
+                  }
+                }
+
                 if (_currentStep < _totalSteps - 1) {
                   setState(() => _currentStep++);
                 } else {
-                  // Finalize profile creation and navigate to Home!
-                  await ref.read(authControllerProvider.notifier).register(
-                        username: _usernameController.text.trim(),
-                        email: '${_usernameController.text.trim()}@vybe.app',
-                        password: 'password123',
-                        displayName: _displayNameController.text.trim(),
-                        gender: _selectedGender,
-                      );
-                  if (mounted) context.go('/home');
+                  // Final submission: Register user with typed real credentials!
+                  final success = await ref.read(authControllerProvider.notifier).register(
+                    email: _emailController.text.trim(),
+                    password: _passwordController.text.trim(),
+                    username: _usernameController.text.trim(),
+                    displayName: _displayNameController.text.trim(),
+                    gender: _selectedGender,
+                    location: _locationController.text.trim(),
+                    bio: _bioController.text.trim(),
+                    interests: _selectedInterests.toList(),
+                    voiceIntroUrl: _hasVoiceIntro ? 'https://actions.google.com/sounds/v1/speech/female_voice.ogg' : null,
+                    voiceIntroDuration: _hasVoiceIntro ? _voiceIntroDuration : 0,
+                  );
+
+                  if (success && mounted) {
+                    context.go('/home');
+                  }
                 }
               },
             ),

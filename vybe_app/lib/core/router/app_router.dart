@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../features/auth/presentation/auth_controller.dart';
 import '../../features/auth/presentation/screens/login_screen.dart';
 import '../../features/auth/presentation/screens/onboarding_screen.dart';
 import '../../features/calling/presentation/screens/call_screen.dart';
@@ -12,8 +13,28 @@ import '../../features/profile/presentation/screens/profile_details_screen.dart'
 import '../../features/wallet/presentation/screens/wallet_screen.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
+  final authState = ref.watch(authControllerProvider);
+
   return GoRouter(
-    initialLocation: '/home',
+    initialLocation: authState.isAuthenticated ? '/home' : '/onboarding',
+    redirect: (context, state) {
+      final isAuth = authState.isAuthenticated;
+      final isAuthPath = state.matchedLocation == '/login' ||
+          state.matchedLocation == '/onboarding' ||
+          state.matchedLocation == '/profile-builder';
+
+      // If not logged in and not on an auth screen, redirect to onboarding
+      if (!isAuth && !isAuthPath) {
+        return '/onboarding';
+      }
+
+      // If logged in and on an auth screen, redirect to home
+      if (isAuth && isAuthPath) {
+        return '/home';
+      }
+
+      return null;
+    },
     routes: [
       GoRoute(
         path: '/onboarding',

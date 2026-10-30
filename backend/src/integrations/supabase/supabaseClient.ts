@@ -21,6 +21,7 @@ export class LocalDbStore {
   public static notifications: any[] = [];
   public static userBlocks: Set<string> = new Set(); // "blockerId:blockedId"
   public static userReports: any[] = [];
+  public static credentials: Map<string, { email: string; password: string }> = new Map();
 
   public static seedDefaults() {
     if (this.gifts.length > 0) return;
@@ -140,6 +141,10 @@ export class LocalDbStore {
 
     seedUsers.forEach(u => {
       this.profiles.set(u.id, u);
+      this.credentials.set(u.id, {
+        email: `${u.username}@vybe.app`,
+        password: 'password123'
+      });
       this.presence.set(u.id, {
         userId: u.id,
         status: u.status,

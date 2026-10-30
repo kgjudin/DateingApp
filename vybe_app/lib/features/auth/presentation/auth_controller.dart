@@ -16,7 +16,7 @@ class AuthState {
     this.isLoading = false,
     this.user,
     this.errorMessage,
-    this.coinBalance = 100,
+    this.coinBalance = 0,
   });
 
   AuthState copyWith({
@@ -43,97 +43,67 @@ final authControllerProvider = StateNotifierProvider<AuthController, AuthState>(
 class AuthController extends StateNotifier<AuthState> {
   final Ref _ref;
 
-  AuthController(this._ref) : super(AuthState()) {
+  AuthController(this._ref) : super(AuthState(isLoading: true)) {
     checkSession();
   }
 
   Future<void> checkSession() async {
-    state = state.copyWith(isLoading: true);
+    state = state.copyWith(isLoading: true, errorMessage: null);
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString(AppConstants.tokenKey);
-      final userId = prefs.getString(AppConstants.userIdKey) ?? 'user-elena-101';
+      final userId = prefs.getString(AppConstants.userIdKey);
 
-      if (token != null) {
+      if (token != null && userId != null) {
         _ref.read(apiClientProvider).setAuthToken(token);
         _ref.read(socketServiceProvider).connect(userId);
 
-        final res = await _ref.read(apiClientProvider).get('/auth/me');
-        if (res is Map && res['user'] != null) {
-          final wallet = res['wallet'] as Map?;
-          state = state.copyWith(
-            isAuthenticated: true,
-            isLoading: false,
-            user: Map<String, dynamic>.from(res['user']),
-            coinBalance: wallet?['balance'] ?? 100,
-          );
-          return;
+        try {
+          final res = await _ref.read(apiClientProvider).get('/auth/me');
+          if (res is Map && res['user'] != null) {
+            final wallet = res['wallet'] as Map?;
+            state = state.copyWith(
+              isAuthenticated: true,
+              isLoading: false,
+              user: Map<String, dynamic>.from(res['user']),
+              coinBalance: wallet?['balance'] ?? 100,
+            );
+            return;
+          }
+        } catch (_) {
+          // Token expired or invalid
+          await prefs.remove(AppConstants.tokenKey);
+          await prefs.remove(AppConstants.userIdKey);
         }
       }
 
-      // Default demo login session for seamless initial experience
-      await loginDemo('user-elena-101');
+      // Not authenticated by default - user must log in or sign up
+      state = AuthState(isAuthenticated: false, isLoading: false);
     } catch (e) {
-      // In case backend is offline, start with demo state
-      await loginDemo('user-elena-101');
+      state = AuthState(isAuthenticated: false, isLoading: false);
     }
   }
 
   Future<bool> loginWithEmail(String email, String password) async {
+    final cleanEmail = email.trim();
+    final cleanPass = password.trim();
+
+    if (cleanEmail.isEmpty || cleanPass.isEmpty) {
+      state = state.copyWith(isLoading: false, errorMessage: 'Please enter both email and password.');
+      return false;
+    }
+
     state = state.copyWith(isLoading: true, errorMessage: null);
     try {
       final res = await _ref.read(apiClientProvider).post('/auth/login', body: {
-        'email': email,
-        'password': password,
+        'email': cleanEmail,
+        'password': cleanPass,
       });
 
       if (res is Map && res['token'] != null) {
         final token = res['token'] as String;
         final user = Map<String, dynamic>.from(res['user']);
         final wallet = res['wallet'] as Map?;
-
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString(AppConstants.tokenKey, token);
-        await prefs.setString(AppConstants.userIdKey, user['id'] ?? 'user-elena-101');
-
-        _ref.read(apiClientProvider).setAuthToken(token);
-        _ref.read(socketServiceProvider).connect(user['id'] ?? 'user-elena-101');
-
-        state = state.copyWith(
-          isAuthenticated: true,
-          isLoading: false,
-          user: user,
-          coinBalance: wallet?['balance'] ?? 100,
-        );
-        return true;
-      }
-      return false;
-    } catch (e) {
-      state = state.copyWith(isLoading: false, errorMessage: e.toString());
-      return false;
-    }
-  }
-
-  Future<bool> register({
-    required String username,
-    required String email,
-    required String password,
-    required String displayName,
-    required String gender,
-  }) async {
-    state = state.copyWith(isLoading: true, errorMessage: null);
-    try {
-      final res = await _ref.read(apiClientProvider).post('/auth/register', body: {
-        'username': username,
-        'email': email,
-        'password': password,
-        'displayName': displayName,
-        'gender': gender,
-      });
-
-      if (res is Map && res['token'] != null) {
-        final token = res['token'] as String;
-        final user = Map<String, dynamic>.from(res['user']);
 
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString(AppConstants.tokenKey, token);
@@ -146,10 +116,13 @@ class AuthController extends StateNotifier<AuthState> {
           isAuthenticated: true,
           isLoading: false,
           user: user,
-          coinBalance: 100,
+          coinBalance: wallet?['balance'] ?? 100,
+          errorMessage: null,
         );
         return true;
       }
+
+      state = state.copyWith(isLoading: false, errorMessage: 'Invalid response from server.');
       return false;
     } catch (e) {
       state = state.copyWith(isLoading: false, errorMessage: e.toString());
@@ -157,35 +130,80 @@ class AuthController extends StateNotifier<AuthState> {
     }
   }
 
-  Future<void> loginDemo(String userId) async {
-    final devToken = 'dev_token_$userId';
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(AppConstants.tokenKey, devToken);
-    await prefs.setString(AppConstants.userIdKey, userId);
+  Future<bool> register({
+    required String email,
+    required String password,
+    required String username,
+    required String displayName,
+    required String gender,
+    String? location,
+    String? bio,
+    List<String>? interests,
+    String? voiceIntroUrl,
+    int? voiceIntroDuration,
+  }) async {
+    final cleanEmail = email.trim().toLowerCase();
+    final cleanPass = password.trim();
+    final cleanUsername = username.trim().toLowerCase();
 
-    _ref.read(apiClientProvider).setAuthToken(devToken);
-    _ref.read(socketServiceProvider).connect(userId);
+    if (cleanEmail.isEmpty || !cleanEmail.contains('@')) {
+      state = state.copyWith(isLoading: false, errorMessage: 'Please enter a valid email address.');
+      return false;
+    }
 
-    // Initial demo profile
-    state = state.copyWith(
-      isAuthenticated: true,
-      isLoading: false,
-      user: {
-        'id': userId,
-        'username': 'elena_v',
-        'displayName': 'Elena Vance',
-        'age': 26,
-        'gender': 'female',
-        'location': 'Berlin, Germany',
-        'bio': 'Podcaster & indie musician. Let us talk about travel, late-night acoustic guitar, and philosophy.',
-        'avatarUrl': 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=500&auto=format&fit=crop&q=80',
-        'coverUrl': 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=1000&auto=format&fit=crop&q=80',
-        'voiceIntroUrl': 'https://actions.google.com/sounds/v1/speech/female_voice.ogg',
-        'voiceIntroDuration': 14,
-        'interests': ['Music', 'Travelling', 'Art', 'Lifestyle'],
-      },
-      coinBalance: 400,
-    );
+    if (cleanUsername.isEmpty || cleanUsername.length < 3) {
+      state = state.copyWith(isLoading: false, errorMessage: 'Username must be at least 3 characters.');
+      return false;
+    }
+
+    if (cleanPass.length < 6) {
+      state = state.copyWith(isLoading: false, errorMessage: 'Password must be at least 6 characters long.');
+      return false;
+    }
+
+    state = state.copyWith(isLoading: true, errorMessage: null);
+    try {
+      final res = await _ref.read(apiClientProvider).post('/auth/register', body: {
+        'email': cleanEmail,
+        'password': cleanPass,
+        'username': cleanUsername,
+        'displayName': displayName.trim().isEmpty ? cleanUsername : displayName.trim(),
+        'gender': gender,
+        'location': location?.trim() ?? 'Online',
+        'bio': bio?.trim() ?? 'Voice enthusiast on VYBE',
+        'interests': interests ?? ['Music', 'Travelling'],
+        'voiceIntroUrl': voiceIntroUrl,
+        'voiceIntroDuration': voiceIntroDuration ?? 0,
+      });
+
+      if (res is Map && res['token'] != null) {
+        final token = res['token'] as String;
+        final user = Map<String, dynamic>.from(res['user']);
+        final wallet = res['wallet'] as Map?;
+
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(AppConstants.tokenKey, token);
+        await prefs.setString(AppConstants.userIdKey, user['id']);
+
+        _ref.read(apiClientProvider).setAuthToken(token);
+        _ref.read(socketServiceProvider).connect(user['id']);
+
+        state = state.copyWith(
+          isAuthenticated: true,
+          isLoading: false,
+          user: user,
+          coinBalance: wallet?['balance'] ?? 100,
+          errorMessage: null,
+        );
+        return true;
+      }
+
+      state = state.copyWith(isLoading: false, errorMessage: 'Registration failed.');
+      return false;
+    } catch (e) {
+      state = state.copyWith(isLoading: false, errorMessage: e.toString());
+      return false;
+    }
   }
 
   void updateCoinBalance(int newBalance) {
@@ -198,6 +216,6 @@ class AuthController extends StateNotifier<AuthState> {
     await prefs.remove(AppConstants.userIdKey);
     _ref.read(apiClientProvider).setAuthToken(null);
     _ref.read(socketServiceProvider).disconnect();
-    state = AuthState();
+    state = AuthState(isAuthenticated: false, isLoading: false);
   }
 }
