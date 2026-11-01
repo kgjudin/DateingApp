@@ -8,6 +8,7 @@ export interface AuthenticatedRequest extends Request {
     id: string;
     email?: string;
     username?: string;
+    displayName?: string;
     role?: string;
   };
 }
@@ -50,6 +51,7 @@ export const authenticateJwt = async (
           id: decoded.sub || decoded.id,
           email: decoded.email,
           username: decoded.username,
+          displayName: decoded.displayName,
           role: decoded.role || 'user'
         };
         return next();
@@ -68,6 +70,7 @@ export const authenticateJwt = async (
             id: user.id,
             email: user.email,
             username: user.user_metadata?.username || user.email?.split('@')[0],
+            displayName: user.user_metadata?.displayName || user.user_metadata?.display_name || user.user_metadata?.username,
             role: user.role || 'user'
           };
           return next();
@@ -91,6 +94,7 @@ export const authenticateJwt = async (
           id: decoded.sub || decoded.id,
           email: decoded.email,
           username: decoded.username,
+          displayName: decoded.displayName,
           role: decoded.role || 'user'
         };
         return next();

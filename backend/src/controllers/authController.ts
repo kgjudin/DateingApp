@@ -189,7 +189,7 @@ export class AuthController {
       // Generate JWT if not already provided by Supabase
       if (!sessionToken) {
         sessionToken = jwt.sign(
-          { sub: userId, id: userId, email: cleanEmail, username: cleanUsername, role: 'user' },
+          { sub: userId, id: userId, email: cleanEmail, username: cleanUsername, displayName: userProfile.displayName, role: 'user' },
           config.supabase.jwtSecret,
           { expiresIn: '30d' }
         );
@@ -314,7 +314,7 @@ export class AuthController {
             }
 
             const token = signInData.session?.access_token || jwt.sign(
-              { sub: sbUser.id, id: sbUser.id, email: sbUser.email, username: finalProfile.username, role: 'user' },
+              { sub: sbUser.id, id: sbUser.id, email: sbUser.email, username: finalProfile.username, displayName: finalProfile.displayName, role: 'user' },
               config.supabase.jwtSecret,
               { expiresIn: '30d' }
             );

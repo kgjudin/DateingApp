@@ -24,6 +24,20 @@ export function setupSocketHandlers(io: Server): void {
       io.emit('user_presence_changed', { userId, status: 'online' });
     }
 
+    // Allow explicit user registration after connect
+    socket.on('register', (data: { userId: string }) => {
+      const uId = data?.userId || userId;
+      if (uId) {
+        socket.join(`user:${uId}`);
+        console.log(`[Socket] User registered room: user:${uId} (${socket.id})`);
+        LocalDbStore.presence.set(uId, {
+          userId: uId,
+          status: 'online',
+          lastSeenAt: new Date().toISOString()
+        });
+      }
+    });
+
     // Heartbeat mechanism: client sends heartbeat every 30s
     socket.on('heartbeat', (data: { userId: string }) => {
       const uId = data?.userId || userId;

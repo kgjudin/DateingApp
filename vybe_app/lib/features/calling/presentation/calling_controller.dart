@@ -80,6 +80,9 @@ class CallingController extends StateNotifier<CallingState> {
     _socketCallAcceptedSub = socket.onCallAccepted.listen((data) {
       if (state.status == CallStatus.ringing || state.status == CallStatus.connecting || state.status == CallStatus.initiating) {
         debugPrint('[Calling] Socket event: Call accepted by peer!');
+        if (data is Map && data['receiver'] != null && data['receiver'] is Map) {
+          state = state.copyWith(peerProfile: Map<String, dynamic>.from(data['receiver']));
+        }
         _onCallConnected();
       }
     });
@@ -112,6 +115,9 @@ class CallingController extends StateNotifier<CallingState> {
         final channelName = res['channelName'] as String;
         final token = res['token'] as String;
         final appId = res['appId'] as String;
+        final resolvedReceiver = (res['receiver'] != null && res['receiver'] is Map)
+            ? Map<String, dynamic>.from(res['receiver'])
+            : receiverProfile;
 
         state = state.copyWith(
           status: CallStatus.ringing,
@@ -119,6 +125,7 @@ class CallingController extends StateNotifier<CallingState> {
           channelName: channelName,
           agoraToken: token,
           appId: appId,
+          peerProfile: resolvedReceiver,
         );
 
         // Join Agora voice channel
@@ -178,7 +185,11 @@ class CallingController extends StateNotifier<CallingState> {
     );
 
     try {
-      await _ref.read(apiClientProvider).post('/calls/accept', body: {'callId': callId});
+      final res = await _ref.read(apiClientProvider).post('/calls/accept', body: {'callId': callId});
+      if (res is Map && res['caller'] != null && res['caller'] is Map) {
+        state = state.copyWith(peerProfile: Map<String, dynamic>.from(res['caller']));
+      }
+
       try {
         await _ref.read(agoraVoiceServiceProvider).joinVoiceChannel(
               appId: appId,

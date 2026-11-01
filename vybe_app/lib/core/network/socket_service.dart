@@ -27,10 +27,19 @@ class SocketService {
 
   bool get isConnected => _socket?.connected ?? false;
 
+  String? _connectedUserId;
+
   void connect(String userId) {
-    if (_socket != null && _socket!.connected) return;
+    if (_socket != null && _socket!.connected && _connectedUserId == userId) return;
 
     try {
+      if (_socket != null) {
+        _socket!.disconnect();
+        _socket!.dispose();
+        _socket = null;
+      }
+      _connectedUserId = userId;
+
       _socket = io.io(
         AppConstants.socketUrl,
         io.OptionBuilder()
@@ -43,7 +52,8 @@ class SocketService {
       _socket!.connect();
 
       _socket!.onConnect((_) {
-        debugPrint('[Socket] Connected to VYBE signaling server');
+        debugPrint('[Socket] Connected to VYBE signaling server for user: $userId');
+        _socket?.emit('register', {'userId': userId});
         _startHeartbeat(userId);
       });
 

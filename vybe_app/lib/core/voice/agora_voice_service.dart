@@ -41,20 +41,30 @@ class AgoraVoiceService {
       await _engine!.initialize(
         RtcEngineContext(
           appId: appId,
-          channelProfile: ChannelProfileType.channelProfileLiveBroadcasting,
-          audioScenario: AudioScenarioType.audioScenarioGameStreaming,
+          channelProfile: ChannelProfileType.channelProfileCommunication,
+          audioScenario: AudioScenarioType.audioScenarioDefault,
         ),
       );
 
       _engine!.registerEventHandler(
         RtcEngineEventHandler(
           onJoinChannelSuccess: (RtcConnection connection, int elapsed) {
-            debugPrint('[Agora] Successfully joined channel: ${connection.channelId}');
+            debugPrint('[Agora] Successfully joined channel: ${connection.channelId} localUid: ${connection.localUid}');
             _currentChannel = connection.channelId;
+            try { _engine?.muteLocalAudioStream(false); } catch (_) {}
+            try { _engine?.muteAllRemoteAudioStreams(false); } catch (_) {}
           },
           onUserJoined: (RtcConnection connection, int remoteUid, int elapsed) {
-            debugPrint('[Agora] Remote user joined: $remoteUid');
+            debugPrint('[Agora] Remote user joined: $remoteUid - unmuting remote audio stream');
             _userJoinedController.add(remoteUid);
+            try {
+              _engine?.muteRemoteAudioStream(uid: remoteUid, mute: false);
+            } catch (_) {}
+            try {
+              if (!kIsWeb) {
+                _engine?.adjustUserPlaybackSignalVolume(uid: remoteUid, volume: 100);
+              }
+            } catch (_) {}
           },
           onUserOffline: (RtcConnection connection, int remoteUid, UserOfflineReasonType reason) {
             debugPrint('[Agora] Remote user offline: $remoteUid');
@@ -69,12 +79,20 @@ class AgoraVoiceService {
         ),
       );
 
-      await _engine!.enableAudio();
-      await _engine!.enableAudioVolumeIndication(interval: 200, smooth: 3, reportVad: true);
+      try { await _engine!.enableAudio(); } catch (_) {}
+      try { await _engine!.enableLocalAudio(true); } catch (_) {}
+      try { await _engine!.muteLocalAudioStream(false); } catch (_) {}
+      try { await _engine!.muteAllRemoteAudioStreams(false); } catch (_) {}
+      try { await _engine!.adjustRecordingSignalVolume(100); } catch (_) {}
+      try { await _engine!.adjustPlaybackSignalVolume(100); } catch (_) {}
+      if (!kIsWeb && (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS)) {
+        try { await _engine!.setDefaultAudioRouteToSpeakerphone(true); } catch (_) {}
+      }
+      try { await _engine!.enableAudioVolumeIndication(interval: 200, smooth: 3, reportVad: true); } catch (_) {}
       _isInitialized = true;
       return true;
     } catch (e) {
-      debugPrint('[Agora] Initialization error: $e');
+      debugPrint('[Agora] Initialization notice: $e');
       _isInitialized = true; // Allow dev fallback
       return false;
     }
@@ -90,25 +108,35 @@ class AgoraVoiceService {
 
     try {
       if (_engine != null) {
-        // Set client role
-        await _engine!.setClientRole(
-          role: isPublisher ? ClientRoleType.clientRoleBroadcaster : ClientRoleType.clientRoleAudience,
-        );
+        try {
+          await _engine!.setClientRole(
+            role: ClientRoleType.clientRoleBroadcaster,
+          );
+        } catch (_) {}
+
+        try { await _engine!.enableAudio(); } catch (_) {}
+        try { await _engine!.enableLocalAudio(true); } catch (_) {}
 
         await _engine!.joinChannel(
           token: token,
           channelId: channelId,
           uid: 0,
-          options: ChannelMediaOptions(
-            clientRoleType: isPublisher ? ClientRoleType.clientRoleBroadcaster : ClientRoleType.clientRoleAudience,
-            channelProfile: ChannelProfileType.channelProfileLiveBroadcasting,
-            publishMicrophoneTrack: isPublisher,
+          options: const ChannelMediaOptions(
+            clientRoleType: ClientRoleType.clientRoleBroadcaster,
+            channelProfile: ChannelProfileType.channelProfileCommunication,
+            publishMicrophoneTrack: true,
             autoSubscribeAudio: true,
+            enableAudioRecordingOrPlayout: true,
           ),
         );
+
+        try { await _engine!.muteLocalAudioStream(false); } catch (_) {}
+        try { await _engine!.muteAllRemoteAudioStreams(false); } catch (_) {}
+        try { await _engine!.adjustRecordingSignalVolume(100); } catch (_) {}
+        try { await _engine!.adjustPlaybackSignalVolume(100); } catch (_) {}
       }
       _currentChannel = channelId;
-      _isMuted = !isPublisher;
+      _isMuted = false;
     } catch (e) {
       debugPrint('[Agora] Join channel error: $e');
       _currentChannel = channelId;

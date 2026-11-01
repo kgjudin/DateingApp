@@ -1,6 +1,6 @@
 import { Response } from 'express';
 import { AuthenticatedRequest } from '../middleware/authMiddleware';
-import { LocalDbStore } from '../integrations/supabase/supabaseClient';
+import { LocalDbStore, getSupabase, buildProfileFromSupabaseUser } from '../integrations/supabase/supabaseClient';
 import { AgoraService } from '../integrations/agora/agoraService';
 import { getSocketIo } from '../sockets/socketHandler';
 
@@ -31,9 +31,40 @@ export class CallController {
         return;
       }
 
+      // Resolve Caller Profile from local store or Supabase
+      let callerProfile = LocalDbStore.profiles.get(callerId);
+      if (!callerProfile || !callerProfile.displayName || callerProfile.displayName === 'Vybe Caller') {
+        const supabase = getSupabase();
+        if (supabase) {
+          try {
+            const { data } = await supabase.auth.admin.getUserById(callerId);
+            if (data?.user) {
+              callerProfile = buildProfileFromSupabaseUser(data.user);
+              LocalDbStore.profiles.set(callerId, callerProfile);
+            }
+          } catch (_) {}
+        }
+      }
+
+      const callerName = req.user?.displayName || callerProfile?.displayName || callerProfile?.username || req.user?.username || req.user?.email?.split('@')[0] || 'Vybe Caller';
+      const callerAvatar = callerProfile?.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${callerProfile?.username || callerId}`;
+
+      // Resolve Receiver Profile from local store or Supabase
       let receiverProfile = LocalDbStore.profiles.get(receiverId);
+      if (!receiverProfile || !receiverProfile.displayName || receiverProfile.displayName === 'Vybe User') {
+        const supabase = getSupabase();
+        if (supabase) {
+          try {
+            const { data } = await supabase.auth.admin.getUserById(receiverId);
+            if (data?.user) {
+              receiverProfile = buildProfileFromSupabaseUser(data.user);
+              LocalDbStore.profiles.set(receiverId, receiverProfile);
+            }
+          } catch (_) {}
+        }
+      }
+
       if (!receiverProfile) {
-        // Fallback: check Supabase user cache or create profile
         receiverProfile = {
           id: receiverId,
           displayName: 'Vybe User',
@@ -43,6 +74,9 @@ export class CallController {
         };
         LocalDbStore.profiles.set(receiverId, receiverProfile);
       }
+
+      const receiverName = receiverProfile.displayName || receiverProfile.username || 'Vybe User';
+      const receiverAvatar = receiverProfile.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${receiverProfile.username || receiverId}`;
 
       // Check receiver call permission preference
       const receiverPrefs = LocalDbStore.preferences.get(receiverId) || {};
@@ -59,34 +93,36 @@ export class CallController {
         }
       }
 
-      // Create unique call session
+      // Create unique call session with short alphanumeric channelName strictly under 64 bytes (Agora requirement)
       const callId = `call_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-      const channelName = `vybe_call_${callerId}_${receiverId}_${Date.now()}`;
+      const channelName = `vc_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
       // Generate dynamic Agora tokens for both caller and receiver with universal numeric UID 0
       const callerAgora = AgoraService.generateRtcToken(channelName, 0, true);
       const receiverAgora = AgoraService.generateRtcToken(channelName, 0, true);
 
-      const callerProfile = LocalDbStore.profiles.get(callerId) || { displayName: 'Vybe Caller', avatarUrl: '' };
+      const callerInfo = {
+        id: callerId,
+        displayName: callerName,
+        username: callerProfile?.username || req.user?.username || 'vyber',
+        avatarUrl: callerAvatar,
+        location: callerProfile?.location || 'Online'
+      };
+
+      const receiverInfo = {
+        id: receiverId,
+        displayName: receiverName,
+        username: receiverProfile.username || 'vyber',
+        avatarUrl: receiverAvatar,
+        location: receiverProfile.location || 'Online'
+      };
 
       const callSession = {
         id: callId,
         callerId,
         receiverId,
-        callerProfile: {
-          id: callerId,
-          displayName: callerProfile.displayName,
-          username: callerProfile.username,
-          avatarUrl: callerProfile.avatarUrl,
-          location: callerProfile.location
-        },
-        receiverProfile: {
-          id: receiverId,
-          displayName: receiverProfile.displayName,
-          username: receiverProfile.username,
-          avatarUrl: receiverProfile.avatarUrl,
-          location: receiverProfile.location
-        },
+        callerProfile: callerInfo,
+        receiverProfile: receiverInfo,
         channelName,
         status: 'ringing',
         startedAt: new Date().toISOString(),
@@ -101,12 +137,13 @@ export class CallController {
       // Set caller presence to in_call
       LocalDbStore.presence.set(callerId, { userId: callerId, status: 'in_call', lastSeenAt: new Date().toISOString() });
 
-      // Signal receiver via WebSockets / Push
+      // Signal receiver via WebSockets / Push with full caller and receiver profiles
       const io = getSocketIo();
       if (io) {
         io.to(`user:${receiverId}`).emit('incoming_call', {
           callId,
-          caller: callSession.callerProfile,
+          caller: callerInfo,
+          receiver: receiverInfo,
           channelName,
           token: receiverAgora.token,
           appId: receiverAgora.appId
@@ -120,7 +157,8 @@ export class CallController {
           channelName,
           token: callerAgora.token,
           appId: callerAgora.appId,
-          receiver: callSession.receiverProfile,
+          caller: callerInfo,
+          receiver: receiverInfo,
           status: 'ringing'
         }
       });
@@ -140,14 +178,14 @@ export class CallController {
 
       let call = LocalDbStore.calls.get(callId);
       if (!call) {
-        const fallbackChannel = `vybe_call_${callId}`;
+        const fallbackChannel = `vc_${callId.replace(/[^a-zA-Z0-9]/g, '').substring(0, 30)}`;
         const fallbackToken = AgoraService.generateRtcToken(fallbackChannel, 0, true).token;
         call = {
           id: callId,
           callerId: 'peer',
           receiverId: receiverId,
-          callerProfile: { displayName: 'Vybe Caller', avatarUrl: '' },
-          receiverProfile: { displayName: 'Vybe Receiver', avatarUrl: '' },
+          callerProfile: { id: 'peer', displayName: 'Vybe Caller', avatarUrl: '', location: 'Online' },
+          receiverProfile: { id: receiverId, displayName: 'Vybe Receiver', avatarUrl: '', location: 'Online' },
           channelName: fallbackChannel,
           status: 'accepted',
           callerAgoraToken: fallbackToken,
@@ -170,6 +208,8 @@ export class CallController {
       if (io) {
         io.to(`user:${call.callerId}`).emit('call_accepted', {
           callId,
+          caller: call.callerProfile,
+          receiver: call.receiverProfile,
           connectedAt: call.connectedAt
         });
       }
@@ -182,6 +222,7 @@ export class CallController {
           token: call.receiverAgoraToken,
           appId: call.appId,
           caller: call.callerProfile,
+          receiver: call.receiverProfile,
           status: 'accepted'
         }
       });
