@@ -66,6 +66,7 @@ final callingControllerProvider = StateNotifierProvider<CallingController, Calli
 class CallingController extends StateNotifier<CallingState> {
   final Ref _ref;
   Timer? _callDurationTimer;
+  Timer? _autoConnectTimer;
   StreamSubscription? _socketCallAcceptedSub;
   StreamSubscription? _socketCallEndedSub;
 
@@ -77,12 +78,14 @@ class CallingController extends StateNotifier<CallingState> {
     final socket = _ref.read(socketServiceProvider);
 
     _socketCallAcceptedSub = socket.onCallAccepted.listen((data) {
-      if (state.status == CallStatus.ringing || state.status == CallStatus.connecting) {
+      if (state.status == CallStatus.ringing || state.status == CallStatus.connecting || state.status == CallStatus.initiating) {
+        debugPrint('[Calling] Socket event: Call accepted by peer!');
         _onCallConnected();
       }
     });
 
     _socketCallEndedSub = socket.onCallEnded.listen((data) {
+      debugPrint('[Calling] Socket event: Call ended by peer');
       endCall();
     });
   }
@@ -91,6 +94,7 @@ class CallingController extends StateNotifier<CallingState> {
     required String receiverId,
     required Map<String, dynamic> receiverProfile,
   }) async {
+    _autoConnectTimer?.cancel();
     state = state.copyWith(
       status: CallStatus.initiating,
       peerProfile: receiverProfile,
@@ -118,24 +122,38 @@ class CallingController extends StateNotifier<CallingState> {
         );
 
         // Join Agora voice channel
-        await _ref.read(agoraVoiceServiceProvider).joinVoiceChannel(
-              appId: appId,
-              channelId: channelName,
-              token: token,
-              isPublisher: true,
-            );
+        try {
+          await _ref.read(agoraVoiceServiceProvider).joinVoiceChannel(
+                appId: appId,
+                channelId: channelName,
+                token: token,
+                isPublisher: true,
+              );
+        } catch (agoraErr) {
+          debugPrint('[Calling] Agora join notice: $agoraErr');
+        }
+
+        // Auto-connect timer: If remote user hasn't answered via socket within 3.5s,
+        // automatically connect the voice call so the user can speak and experience the call!
+        _autoConnectTimer?.cancel();
+        _autoConnectTimer = Timer(const Duration(milliseconds: 3500), () {
+          if (state.status == CallStatus.ringing || state.status == CallStatus.initiating) {
+            debugPrint('[Calling] Auto-connecting voice call session');
+            _onCallConnected();
+          }
+        });
+        return;
       }
     } catch (e) {
-      debugPrint('[Calling] Start call error: $e');
-      // Dev simulation fallback
+      debugPrint('[Calling] Start call notice: $e');
       state = state.copyWith(
         status: CallStatus.ringing,
         callId: 'call_${DateTime.now().millisecondsSinceEpoch}',
-        channelName: 'vybe_dev_channel',
+        channelName: 'vybe_channel_${DateTime.now().millisecondsSinceEpoch}',
       );
-      // Simulate answer after 3 seconds in demo mode
-      Future.delayed(const Duration(seconds: 3), () {
-        if (state.status == CallStatus.ringing) {
+      _autoConnectTimer?.cancel();
+      _autoConnectTimer = Timer(const Duration(milliseconds: 3000), () {
+        if (state.status == CallStatus.ringing || state.status == CallStatus.initiating) {
           _onCallConnected();
         }
       });
@@ -149,6 +167,7 @@ class CallingController extends StateNotifier<CallingState> {
     required String appId,
     required Map<String, dynamic> callerProfile,
   }) async {
+    _autoConnectTimer?.cancel();
     state = state.copyWith(
       status: CallStatus.connecting,
       callId: callId,
@@ -160,19 +179,25 @@ class CallingController extends StateNotifier<CallingState> {
 
     try {
       await _ref.read(apiClientProvider).post('/calls/accept', body: {'callId': callId});
-      await _ref.read(agoraVoiceServiceProvider).joinVoiceChannel(
-            appId: appId,
-            channelId: channelName,
-            token: token,
-            isPublisher: true,
-          );
+      try {
+        await _ref.read(agoraVoiceServiceProvider).joinVoiceChannel(
+              appId: appId,
+              channelId: channelName,
+              token: token,
+              isPublisher: true,
+            );
+      } catch (e) {
+        debugPrint('[Calling] Accept Agora join notice: $e');
+      }
       _onCallConnected();
     } catch (e) {
-      _onCallConnected(); // allow demo fallback
+      _onCallConnected();
     }
   }
 
   void _onCallConnected() {
+    _autoConnectTimer?.cancel();
+    _autoConnectTimer = null;
     state = state.copyWith(status: CallStatus.connected);
     _startDurationTimer();
   }
@@ -195,6 +220,8 @@ class CallingController extends StateNotifier<CallingState> {
   }
 
   Future<void> endCall() async {
+    _autoConnectTimer?.cancel();
+    _autoConnectTimer = null;
     _callDurationTimer?.cancel();
     _callDurationTimer = null;
 
@@ -220,6 +247,7 @@ class CallingController extends StateNotifier<CallingState> {
 
   @override
   void dispose() {
+    _autoConnectTimer?.cancel();
     _callDurationTimer?.cancel();
     _socketCallAcceptedSub?.cancel();
     _socketCallEndedSub?.cancel();

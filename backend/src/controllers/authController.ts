@@ -1,7 +1,12 @@
 import { Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { AuthenticatedRequest } from '../middleware/authMiddleware';
-import { LocalDbStore, getSupabase } from '../integrations/supabase/supabaseClient';
+import {
+  LocalDbStore,
+  getSupabase,
+  checkProfilesTableExists,
+  buildProfileFromSupabaseUser
+} from '../integrations/supabase/supabaseClient';
 import { config } from '../config';
 
 export class AuthController {
@@ -42,6 +47,8 @@ export class AuthController {
         return;
       }
 
+      const supabase = getSupabase();
+
       // Check if username or email is already taken
       for (const p of LocalDbStore.profiles.values()) {
         if (p.username?.toLowerCase() === cleanUsername) {
@@ -54,17 +61,31 @@ export class AuthController {
         }
       }
 
-      for (const cred of LocalDbStore.credentials.values()) {
-        if (cred.email.toLowerCase() === cleanEmail) {
-          res.status(409).json({ success: false, error: { message: 'An account with this email already exists. Please log in.' } });
-          return;
-        }
+      if (supabase) {
+        try {
+          const { data: userList } = await supabase.auth.admin.listUsers();
+          if (userList?.users) {
+            const exists = userList.users.some(
+              u =>
+                u.email?.toLowerCase() === cleanEmail ||
+                u.user_metadata?.username?.toLowerCase() === cleanUsername
+            );
+            if (exists) {
+              res.status(409).json({
+                success: false,
+                error: { message: 'An account with this email or username already exists. Please log in.' }
+              });
+              return;
+            }
+          }
+        } catch (_) {}
       }
 
-      const userId = `user-${Date.now()}`;
-      const newProfile = {
-        id: userId,
-        email: cleanEmail,
+      let userId = `user-${Date.now()}`;
+      let sessionToken: string | null = null;
+      let userProfile: any = null;
+
+      const metadata = {
         username: cleanUsername,
         displayName: displayName?.trim() || cleanUsername,
         dateOfBirth: dateOfBirth || '2000-01-01',
@@ -77,13 +98,81 @@ export class AuthController {
         voiceIntroDuration: voiceIntroDuration || 0,
         languages: ['English'],
         interests: Array.isArray(interests) && interests.length > 0 ? interests : ['Music', 'Travelling'],
-        status: 'online',
-        isSuspended: false,
-        createdAt: new Date().toISOString()
       };
 
-      // Store in DB store
-      LocalDbStore.profiles.set(userId, newProfile);
+      if (supabase) {
+        const { data: createData, error: createError } = await supabase.auth.admin.createUser({
+          email: cleanEmail,
+          password: cleanPassword,
+          email_confirm: true,
+          user_metadata: metadata,
+        });
+
+        if (createError) {
+          res.status(400).json({ success: false, error: { message: createError.message } });
+          return;
+        }
+
+        userId = createData.user.id;
+
+        // Try getting session token via Supabase Auth
+        try {
+          const { data: signData } = await supabase.auth.signInWithPassword({
+            email: cleanEmail,
+            password: cleanPassword,
+          });
+          if (signData?.session?.access_token) {
+            sessionToken = signData.session.access_token;
+          }
+        } catch (_) {}
+
+        // If public.profiles exists, insert/upsert into it
+        const hasProfilesTable = await checkProfilesTableExists();
+        if (hasProfilesTable) {
+          try {
+            await supabase.from('profiles').upsert({
+              id: userId,
+              username: cleanUsername,
+              display_name: metadata.displayName,
+              date_of_birth: metadata.dateOfBirth,
+              gender: metadata.gender,
+              location: metadata.location,
+              bio: metadata.bio,
+              avatar_url: metadata.avatarUrl,
+              cover_url: metadata.coverUrl,
+              voice_intro_url: metadata.voiceIntroUrl,
+              voice_intro_duration: metadata.voiceIntroDuration,
+              languages: metadata.languages,
+              hobbies: metadata.interests,
+            });
+          } catch (_) {}
+        }
+
+        userProfile = buildProfileFromSupabaseUser(createData.user);
+      } else {
+        userProfile = {
+          id: userId,
+          email: cleanEmail,
+          username: cleanUsername,
+          displayName: metadata.displayName,
+          dateOfBirth: metadata.dateOfBirth,
+          gender: metadata.gender,
+          location: metadata.location,
+          bio: metadata.bio,
+          avatarUrl: metadata.avatarUrl,
+          coverUrl: metadata.coverUrl,
+          voiceIntroUrl: metadata.voiceIntroUrl,
+          voiceIntroDuration: metadata.voiceIntroDuration,
+          languages: metadata.languages,
+          interests: metadata.interests,
+          status: 'online',
+          isSuspended: false,
+          createdAt: new Date().toISOString()
+        };
+      }
+
+      // Store in memory cache
+      LocalDbStore.profiles.set(userId, userProfile);
       LocalDbStore.credentials.set(userId, { email: cleanEmail, password: cleanPassword });
       LocalDbStore.presence.set(userId, { userId, status: 'online', lastSeenAt: new Date().toISOString() });
       LocalDbStore.preferences.set(userId, {
@@ -95,21 +184,23 @@ export class AuthController {
         showAge: true,
         showLocation: true
       });
-      LocalDbStore.wallets.set(userId, { balance: 100, earned: 100, spent: 0 }); // 100 free welcome coins
+      LocalDbStore.wallets.set(userId, { balance: 100, earned: 100, spent: 0 });
 
-      // Generate JWT session token
-      const token = jwt.sign(
-        { sub: userId, id: userId, email: cleanEmail, username: cleanUsername, role: 'user' },
-        config.supabase.jwtSecret,
-        { expiresIn: '30d' }
-      );
+      // Generate JWT if not already provided by Supabase
+      if (!sessionToken) {
+        sessionToken = jwt.sign(
+          { sub: userId, id: userId, email: cleanEmail, username: cleanUsername, role: 'user' },
+          config.supabase.jwtSecret,
+          { expiresIn: '30d' }
+        );
+      }
 
       res.status(201).json({
         success: true,
         data: {
-          token,
-          user: newProfile,
-          wallet: { balance: 100 }
+          token: sessionToken,
+          user: userProfile,
+          wallet: { balance: 100, earned: 100, spent: 0 }
         }
       });
     } catch (err: any) {
@@ -121,7 +212,7 @@ export class AuthController {
     try {
       const { email, password } = req.body;
 
-      const input = (email || '').trim().toLowerCase();
+      const input = (email || '').trim();
       const inputPass = (password || '').trim();
 
       if (!input || !inputPass) {
@@ -129,49 +220,162 @@ export class AuthController {
         return;
       }
 
-      // Find user by email or username
+      const supabase = getSupabase();
+      let emailToUse = input.toLowerCase();
+
+      if (supabase) {
+        // If input does not contain '@', user signed in with username - resolve email
+        if (!input.includes('@')) {
+          try {
+            const hasProfilesTable = await checkProfilesTableExists();
+            if (hasProfilesTable) {
+              const { data: pRows } = await supabase
+                .from('profiles')
+                .select('id, email, username')
+                .ilike('username', input)
+                .limit(1);
+
+              if (pRows && pRows.length > 0 && pRows[0].email) {
+                emailToUse = pRows[0].email.toLowerCase();
+              }
+            }
+
+            // Also search auth users metadata
+            if (!emailToUse.includes('@')) {
+              const { data: usersData } = await supabase.auth.admin.listUsers();
+              if (usersData?.users) {
+                const found = usersData.users.find(
+                  u =>
+                    u.user_metadata?.username?.toLowerCase() === input.toLowerCase() ||
+                    u.email?.toLowerCase() === input.toLowerCase()
+                );
+                if (found && found.email) {
+                  emailToUse = found.email.toLowerCase();
+                }
+              }
+            }
+          } catch (_) {}
+
+          // Fallback to local profiles
+          if (!emailToUse.includes('@')) {
+            for (const p of LocalDbStore.profiles.values()) {
+              if (p.username?.toLowerCase() === input.toLowerCase() && p.email) {
+                emailToUse = p.email.toLowerCase();
+                break;
+              }
+            }
+          }
+        }
+
+        // Authenticate with Supabase Auth
+        try {
+          const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+            email: emailToUse,
+            password: inputPass,
+          });
+
+          if (!signInError && signInData?.user) {
+            const sbUser = signInData.user;
+            let pRow: any = null;
+
+            const hasProfilesTable = await checkProfilesTableExists();
+            if (hasProfilesTable) {
+              try {
+                const { data } = await supabase.from('profiles').select('*').eq('id', sbUser.id).single();
+                if (data) pRow = data;
+              } catch (_) {}
+            }
+
+            const finalProfile = buildProfileFromSupabaseUser(sbUser, pRow);
+
+            // Populate local cache
+            LocalDbStore.profiles.set(sbUser.id, finalProfile);
+            LocalDbStore.credentials.set(sbUser.id, { email: emailToUse, password: inputPass });
+            LocalDbStore.presence.set(sbUser.id, {
+              userId: sbUser.id,
+              status: 'online',
+              lastSeenAt: new Date().toISOString()
+            });
+
+            if (!LocalDbStore.preferences.has(sbUser.id)) {
+              LocalDbStore.preferences.set(sbUser.id, {
+                userId: sbUser.id,
+                preferredGenders: ['everyone'],
+                discoveryEnabled: true,
+                whoCanCallMe: 'everyone',
+                showOnlineStatus: true,
+                showAge: true,
+                showLocation: true
+              });
+            }
+
+            if (!LocalDbStore.wallets.has(sbUser.id)) {
+              LocalDbStore.wallets.set(sbUser.id, { balance: 100, earned: 100, spent: 0 });
+            }
+
+            const token = signInData.session?.access_token || jwt.sign(
+              { sub: sbUser.id, id: sbUser.id, email: sbUser.email, username: finalProfile.username, role: 'user' },
+              config.supabase.jwtSecret,
+              { expiresIn: '30d' }
+            );
+
+            res.json({
+              success: true,
+              data: {
+                token,
+                user: finalProfile,
+                wallet: LocalDbStore.wallets.get(sbUser.id) || { balance: 100, earned: 100, spent: 0 }
+              }
+            });
+            return;
+          }
+        } catch (sbErr: any) {
+          console.warn('[Auth] Supabase auth attempt notice:', sbErr.message);
+        }
+      }
+
+      // Check LocalDbStore fallback
       let foundUser: any = null;
       for (const p of LocalDbStore.profiles.values()) {
-        if (p.email?.toLowerCase() === input || p.username?.toLowerCase() === input) {
+        if (p.email?.toLowerCase() === input.toLowerCase() || p.username?.toLowerCase() === input.toLowerCase()) {
           foundUser = p;
           break;
         }
       }
 
-      if (!foundUser) {
-        res.status(401).json({ success: false, error: { message: 'Invalid credentials. User not found.' } });
-        return;
-      }
-
-      // Check password
-      const creds = LocalDbStore.credentials.get(foundUser.id);
-      if (creds) {
-        if (creds.password !== inputPass) {
+      if (foundUser) {
+        const creds = LocalDbStore.credentials.get(foundUser.id);
+        if (creds && creds.password !== inputPass) {
           res.status(401).json({ success: false, error: { message: 'Incorrect password. Please try again.' } });
           return;
         }
+
+        LocalDbStore.presence.set(foundUser.id, {
+          userId: foundUser.id,
+          status: 'online',
+          lastSeenAt: new Date().toISOString()
+        });
+
+        const token = jwt.sign(
+          { sub: foundUser.id, id: foundUser.id, email: foundUser.email, username: foundUser.username, role: 'user' },
+          config.supabase.jwtSecret,
+          { expiresIn: '30d' }
+        );
+
+        res.json({
+          success: true,
+          data: {
+            token,
+            user: foundUser,
+            wallet: LocalDbStore.wallets.get(foundUser.id) || { balance: 100, earned: 100, spent: 0 }
+          }
+        });
+        return;
       }
 
-      // Successful login
-      LocalDbStore.presence.set(foundUser.id, {
-        userId: foundUser.id,
-        status: 'online',
-        lastSeenAt: new Date().toISOString()
-      });
-
-      const token = jwt.sign(
-        { sub: foundUser.id, id: foundUser.id, email: foundUser.email, username: foundUser.username, role: 'user' },
-        config.supabase.jwtSecret,
-        { expiresIn: '30d' }
-      );
-
-      res.json({
-        success: true,
-        data: {
-          token,
-          user: foundUser,
-          wallet: LocalDbStore.wallets.get(foundUser.id) || { balance: 100, earned: 100, spent: 0 }
-        }
+      res.status(401).json({
+        success: false,
+        error: { message: 'Invalid credentials. Incorrect email, username, or password.' }
       });
     } catch (err: any) {
       res.status(500).json({ success: false, error: { message: err.message } });
@@ -186,13 +390,58 @@ export class AuthController {
         return;
       }
 
-      const profile = LocalDbStore.profiles.get(userId);
+      let profile = LocalDbStore.profiles.get(userId);
+
+      // If not in local cache, load from Supabase
+      if (!profile) {
+        const supabase = getSupabase();
+        if (supabase) {
+          try {
+            const hasProfilesTable = await checkProfilesTableExists();
+            let pRow: any = null;
+            if (hasProfilesTable) {
+              const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
+              if (data) pRow = data;
+            }
+
+            const { data: usrData } = await supabase.auth.admin.getUserById(userId);
+            if (usrData?.user) {
+              profile = buildProfileFromSupabaseUser(usrData.user, pRow);
+              LocalDbStore.profiles.set(userId, profile);
+              LocalDbStore.presence.set(userId, { userId, status: 'online', lastSeenAt: new Date().toISOString() });
+              if (!LocalDbStore.wallets.has(userId)) {
+                LocalDbStore.wallets.set(userId, { balance: 100, earned: 100, spent: 0 });
+              }
+              if (!LocalDbStore.preferences.has(userId)) {
+                LocalDbStore.preferences.set(userId, {
+                  userId,
+                  preferredGenders: ['everyone'],
+                  discoveryEnabled: true,
+                  whoCanCallMe: 'everyone',
+                  showOnlineStatus: true,
+                  showAge: true,
+                  showLocation: true
+                });
+              }
+            }
+          } catch (_) {}
+        }
+      }
+
       if (!profile) {
         res.status(404).json({ success: false, error: { message: 'User profile not found.' } });
         return;
       }
 
-      const preferences = LocalDbStore.preferences.get(userId);
+      const preferences = LocalDbStore.preferences.get(userId) || {
+        userId,
+        preferredGenders: ['everyone'],
+        discoveryEnabled: true,
+        whoCanCallMe: 'everyone',
+        showOnlineStatus: true,
+        showAge: true,
+        showLocation: true
+      };
       const wallet = LocalDbStore.wallets.get(userId) || { balance: 100, earned: 100, spent: 0 };
 
       res.json({

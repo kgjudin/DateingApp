@@ -34,7 +34,7 @@ class SocketService {
       _socket = io.io(
         AppConstants.socketUrl,
         io.OptionBuilder()
-            .setTransports(['websocket'])
+            .setTransports(['websocket', 'polling'])
             .disableAutoConnect()
             .setQuery({'userId': userId})
             .build(),

@@ -3,6 +3,7 @@ import { Server as SocketIOServer } from 'socket.io';
 import { createApp } from './app';
 import { config } from './config';
 import { setupSocketHandlers } from './sockets/socketHandler';
+import { syncUsersFromSupabase, getSupabase } from './integrations/supabase/supabaseClient';
 
 const app = createApp();
 const server = http.createServer(app);
@@ -19,13 +20,19 @@ const io = new SocketIOServer(server, {
 
 setupSocketHandlers(io);
 
-server.listen(config.port, () => {
+server.listen(config.port, async () => {
+  const sbConnected = !!getSupabase();
   console.log(`=======================================================`);
   console.log(`⚡ VYBE VOICE SOCIAL BACKEND RUNNING ON PORT ${config.port}`);
   console.log(`⚡ API Prefix: http://localhost:${config.port}${config.apiPrefix}`);
   console.log(`⚡ Admin Dashboard: http://localhost:${config.port}/api/v1/admin/dashboard`);
   console.log(`⚡ Environment: ${config.nodeEnv}`);
+  console.log(`⚡ Supabase Live Integration: ${sbConnected ? 'CONNECTED' : 'STANDALONE (Fallback)'}`);
   console.log(`=======================================================`);
+
+  if (sbConnected) {
+    await syncUsersFromSupabase();
+  }
 });
 
 export { server, io };

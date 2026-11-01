@@ -7,8 +7,14 @@ class AppConstants {
   // Production Render Cloud Server
   static const String _cloudBaseUrl = 'https://dateingapp.onrender.com';
 
-  // Set to true if you want to test against local machine
-  static const bool useLocalhost = false;
+  // Override: set to true to force localhost, false to force cloud, or null to auto-detect
+  // (In debug mode it connects to localhost:5000, in release mode it connects to Render cloud)
+  static const bool? _forceLocalhost = null;
+
+  static bool get useLocalhost {
+    if (_forceLocalhost != null) return _forceLocalhost!;
+    return kDebugMode;
+  }
 
   static String get apiBaseUrl {
     if (useLocalhost) {
@@ -33,7 +39,7 @@ class AppConstants {
   }
 
   // Agora App ID fallback
-  static const String defaultAgoraAppId = 'test_agora_app_id_vybe';
+  static const String defaultAgoraAppId = '2e49a7ec15bb4b29bd29576257a8ea5f';
 
   // Storage keys
   static const String tokenKey = 'vybe_auth_token';

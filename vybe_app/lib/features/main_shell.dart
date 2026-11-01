@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../core/network/socket_service.dart';
 import '../core/theme/app_colors.dart';
 import '../core/widgets/custom_bottom_nav.dart';
@@ -55,6 +56,9 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
                     appId: data['appId'] ?? '',
                     callerProfile: Map<String, dynamic>.from(data['caller'] ?? {}),
                   );
+              if (mounted) {
+                context.push('/calling');
+              }
             },
             onDecline: () {
               Navigator.pop(ctx);
