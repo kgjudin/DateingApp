@@ -8,15 +8,15 @@ export const config = {
   corsOrigin: process.env.CORS_ORIGIN || '*',
   
   supabase: {
-    url: process.env.SUPABASE_URL || 'https://dummy-vybe-project.supabase.co',
-    anonKey: process.env.SUPABASE_ANON_KEY || 'dummy-anon-key',
-    serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || 'dummy-service-role-key',
-    jwtSecret: process.env.JWT_SECRET || 'super-secret-vybe-jwt-key-change-in-production',
+    url: process.env.SUPABASE_URL || 'https://qkznhqzlaqnhesnmlmzb.supabase.co',
+    anonKey: process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFrem5ocXpsYXFuaGVzbm1sbXpiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMzNzE5NTksImV4cCI6MjEwODk0Nzk1OX0.KA7A4JqoSMc__95LF-Aa-GnfIBtnOqzBioj1ZYToRLo',
+    serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFrem5ocXpsYXFuaGVzbm1sbXpiIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5MzM3MTk1OSwiZXhwIjoyMTA4OTQ3OTU5fQ.wqQ7JJtkP1XO6ToEK6GL_a69q8Arb5NUKML_XhzXcWA',
+    jwtSecret: process.env.JWT_SECRET || 'fcQMpWjzvuQs3sq9mO733cP56ykexJNNxlvcoIOC+42SIUIsJNDRY1BIUH88+5GTJVuhMZD0fNRO8+xee7geNA==',
   },
 
   agora: {
-    appId: process.env.AGORA_APP_ID || 'test_agora_app_id_vybe',
-    appCertificate: process.env.AGORA_APP_CERTIFICATE || 'test_agora_cert_vybe',
+    appId: process.env.AGORA_APP_ID || '2e49a7ec15bb4b29bd29576257a8ea5f',
+    appCertificate: process.env.AGORA_APP_CERTIFICATE || 'dadcb0cc132941e086e74d78524c17a1',
     tokenExpiration: parseInt(process.env.AGORA_TOKEN_EXPIRATION_SECONDS || '86400', 10),
   },
 
