@@ -37,7 +37,12 @@ class _CallScreenState extends ConsumerState<CallScreen> {
 
   @override
   void dispose() {
-    ref.read(callingControllerProvider.notifier).setCallScreenVisible(false);
+    // Mark the call screen as no longer visible so the return-to-call banner
+    // appears on the previous screen (home / profile / etc.).
+    // We call this in dispose() so browser back-button presses also trigger it.
+    try {
+      ref.read(callingControllerProvider.notifier).setCallScreenVisible(false);
+    } catch (_) {}
     _giftSub?.cancel();
     _giftDismissTimer?.cancel();
     super.dispose();

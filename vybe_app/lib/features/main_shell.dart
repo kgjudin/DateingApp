@@ -277,13 +277,6 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
 
   @override
   Widget build(BuildContext context) {
-    final callingState = ref.watch(callingControllerProvider);
-    final isCallActive = (callingState.status == CallStatus.connected ||
-            callingState.status == CallStatus.connecting ||
-            callingState.status == CallStatus.ringing ||
-            callingState.status == CallStatus.initiating) &&
-        !callingState.isCallScreenVisible;
-
     return Scaffold(
       backgroundColor: AppColors.primaryBackground,
       body: Stack(
@@ -292,20 +285,16 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
             index: _currentIndex,
             children: _screens,
           ),
+          // The return-to-call floating banner is handled globally by
+          // ActiveCallOverlayWrapper in main.dart (wraps the entire app).
+          // This avoids timing issues with isCallScreenVisible on web.
           Positioned(
             bottom: 0,
             left: 0,
             right: 0,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (isCallActive)
-                  _buildDockedReturnToCallBanner(context, callingState),
-                CustomBottomNav(
-                  currentIndex: _currentIndex,
-                  onTap: (index) => setState(() => _currentIndex = index),
-                ),
-              ],
+            child: CustomBottomNav(
+              currentIndex: _currentIndex,
+              onTap: (index) => setState(() => _currentIndex = index),
             ),
           ),
         ],
@@ -313,168 +302,4 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
     );
   }
 
-  Widget _buildDockedReturnToCallBanner(BuildContext context, CallingState callingState) {
-    final peer = callingState.peerProfile ?? {};
-    final peerName = peer['displayName']?.toString() ?? 'Active Call';
-    final peerAvatar = peer['avatarUrl']?.toString() ??
-        'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=500';
-
-    final isConnected = callingState.status == CallStatus.connected;
-    final m = (callingState.durationSeconds ~/ 60).toString().padLeft(2, '0');
-    final s = (callingState.durationSeconds % 60).toString().padLeft(2, '0');
-    final durationText = isConnected
-        ? '$m:$s'
-        : (callingState.status == CallStatus.ringing ? 'Ringing...' : 'Calling...');
-
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(20),
-          onTap: () {
-            ref.read(callingControllerProvider.notifier).setCallScreenVisible(true);
-            context.push('/calling');
-          },
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF1F1138), Color(0xFF131524)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: isConnected ? AppColors.online : AppColors.primaryAccent,
-                width: 1.5,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: (isConnected ? AppColors.online : AppColors.primaryAccent).withOpacity(0.35),
-                  blurRadius: 16,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                // Caller Avatar + Glowing Status Indicator
-                Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    CircleAvatar(
-                      radius: 20,
-                      backgroundImage: NetworkImage(peerAvatar),
-                    ),
-                    Positioned(
-                      bottom: 0,
-                      right: 0,
-                      child: Container(
-                        width: 12,
-                        height: 12,
-                        decoration: BoxDecoration(
-                          color: isConnected ? AppColors.online : AppColors.busy,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.black, width: 2),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(width: 12),
-
-                // Name & Duration
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              peerName,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w800,
-                                fontSize: 14,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          const Text('🔊', style: TextStyle(fontSize: 11)),
-                        ],
-                      ),
-                      const SizedBox(height: 2),
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                            decoration: BoxDecoration(
-                              color: (isConnected ? AppColors.online : AppColors.primaryAccent).withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              durationText,
-                              style: TextStyle(
-                                color: isConnected ? AppColors.online : AppColors.primaryAccentLight,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 11,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          const Text(
-                            'Tap to return',
-                            style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-
-                // RETURN TO CALL BUTTON
-                ElevatedButton.icon(
-                  onPressed: () {
-                    ref.read(callingControllerProvider.notifier).setCallScreenVisible(true);
-                    context.push('/calling');
-                  },
-                  icon: const Icon(Icons.phone_in_talk_rounded, size: 14, color: Colors.white),
-                  label: const Text(
-                    'RETURN',
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: isConnected ? AppColors.online : AppColors.primaryAccent,
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  ),
-                ),
-                const SizedBox(width: 8),
-
-                // Quick Hangup Button
-                GestureDetector(
-                  onTap: () => ref.read(callingControllerProvider.notifier).endCall(),
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: const BoxDecoration(
-                      color: AppColors.error,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.call_end_rounded, color: Colors.white, size: 16),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 }

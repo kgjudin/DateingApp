@@ -4,6 +4,16 @@ import '../../../../core/router/app_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../calling_controller.dart';
 
+/// App-level persistent "Return to Call" overlay.
+///
+/// This widget wraps the entire MaterialApp child (via MaterialApp.router's
+/// builder) and shows a floating banner whenever a call is active and the
+/// user is NOT already on the /calling screen.
+///
+/// Design decision: we use the router's current path to decide visibility
+/// rather than the [CallingState.isCallScreenVisible] flag, because on web
+/// the browser back-button may not synchronously update that flag before
+/// this widget rebuilds.
 class ActiveCallOverlayWrapper extends ConsumerWidget {
   final Widget? child;
 
@@ -19,33 +29,39 @@ class ActiveCallOverlayWrapper extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final callingState = ref.watch(callingControllerProvider);
     final router = ref.watch(appRouterProvider);
-    final String currentLocation = router.routerDelegate.currentConfiguration.uri.toString();
 
-    // Show floating overlay on outside screens (e.g. /profile, /wallet), but skip /home since it has its own docked bottom banner
-    final bool isCallActive = (callingState.status == CallStatus.connected ||
-            callingState.status == CallStatus.connecting ||
-            callingState.status == CallStatus.ringing ||
-            callingState.status == CallStatus.initiating) &&
-        !callingState.isCallScreenVisible &&
-        !currentLocation.startsWith('/home') &&
-        !currentLocation.startsWith('/calling');
+    // Determine whether the user is currently ON the calling screen.
+    final String currentPath =
+        router.routerDelegate.currentConfiguration.uri.path;
+    final bool onCallingScreen = currentPath == '/calling';
+
+    // A call is "active" (not idle/ended/failed) when any of these statuses hold.
+    final bool callIsActive = callingState.status == CallStatus.connected ||
+        callingState.status == CallStatus.connecting ||
+        callingState.status == CallStatus.ringing ||
+        callingState.status == CallStatus.initiating;
+
+    // Show the floating banner any time there is an active call and the user
+    // is NOT already looking at the calling screen.
+    final bool showBanner = callIsActive && !onCallingScreen;
 
     final peer = callingState.peerProfile ?? {};
     final peerName = peer['displayName']?.toString() ?? 'Active Call';
     final peerAvatar = peer['avatarUrl']?.toString() ??
         'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=500';
 
-    final isConnected = callingState.status == CallStatus.connected;
-    final statusText = isConnected
+    final bool isConnected = callingState.status == CallStatus.connected;
+    final String statusText = isConnected
         ? _formatDuration(callingState.durationSeconds)
         : (callingState.status == CallStatus.ringing ? 'Ringing...' : 'Calling...');
 
     void returnToCall() {
+      // Mark the call screen visible so the banner hides once we arrive.
       ref.read(callingControllerProvider.notifier).setCallScreenVisible(true);
       try {
-        ref.read(appRouterProvider).push('/calling');
+        router.push('/calling');
       } catch (_) {
-        ref.read(appRouterProvider).go('/calling');
+        router.go('/calling');
       }
     }
 
@@ -55,44 +71,47 @@ class ActiveCallOverlayWrapper extends ConsumerWidget {
         children: [
           if (child != null) child!,
 
-          // Active Call Floating Bar
-          if (isCallActive)
+          // ── Active Call Floating Banner ──────────────────────────────────
+          if (showBanner)
             Positioned(
-              top: MediaQuery.of(context).padding.top + 12,
-              left: 12,
-              right: 12,
+              top: MediaQuery.of(context).padding.top + 8,
+              left: 10,
+              right: 10,
               child: Material(
                 color: Colors.transparent,
                 child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
                   onTap: returnToCall,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(
-                        colors: [
-                          Color(0xFF1F1138),
-                          Color(0xFF131524),
-                        ],
+                        colors: [Color(0xFF1F1138), Color(0xFF131524)],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
                       borderRadius: BorderRadius.circular(22),
                       border: Border.all(
-                        color: isConnected ? AppColors.online : AppColors.primaryAccent,
+                        color: isConnected
+                            ? AppColors.online
+                            : AppColors.primaryAccent,
                         width: 1.5,
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: (isConnected ? AppColors.online : AppColors.primaryAccent)
-                              .withOpacity(0.35),
-                          blurRadius: 18,
+                          color: (isConnected
+                                  ? AppColors.online
+                                  : AppColors.primaryAccent)
+                              .withOpacity(0.4),
+                          blurRadius: 20,
                           offset: const Offset(0, 6),
                         ),
                       ],
                     ),
                     child: Row(
                       children: [
-                        // Live pulsating status badge with Avatar
+                        // Avatar with live status dot
                         Stack(
                           alignment: Alignment.center,
                           children: [
@@ -108,9 +127,12 @@ class ActiveCallOverlayWrapper extends ConsumerWidget {
                                 width: 12,
                                 height: 12,
                                 decoration: BoxDecoration(
-                                  color: isConnected ? AppColors.online : AppColors.busy,
+                                  color: isConnected
+                                      ? AppColors.online
+                                      : AppColors.busy,
                                   shape: BoxShape.circle,
-                                  border: Border.all(color: Colors.black, width: 2),
+                                  border: Border.all(
+                                      color: Colors.black, width: 2),
                                 ),
                               ),
                             ),
@@ -118,7 +140,7 @@ class ActiveCallOverlayWrapper extends ConsumerWidget {
                         ),
                         const SizedBox(width: 12),
 
-                        // Info text: Name & Duration
+                        // Name & status text
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -139,23 +161,29 @@ class ActiveCallOverlayWrapper extends ConsumerWidget {
                                     ),
                                   ),
                                   const SizedBox(width: 6),
-                                  const Text('🔊', style: TextStyle(fontSize: 11)),
+                                  const Text('🔊',
+                                      style: TextStyle(fontSize: 11)),
                                 ],
                               ),
                               const SizedBox(height: 2),
                               Row(
                                 children: [
                                   Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 6, vertical: 1),
                                     decoration: BoxDecoration(
-                                      color: (isConnected ? AppColors.online : AppColors.primaryAccent)
+                                      color: (isConnected
+                                              ? AppColors.online
+                                              : AppColors.primaryAccent)
                                           .withOpacity(0.2),
                                       borderRadius: BorderRadius.circular(8),
                                     ),
                                     child: Text(
                                       statusText,
                                       style: TextStyle(
-                                        color: isConnected ? AppColors.online : AppColors.primaryAccentLight,
+                                        color: isConnected
+                                            ? AppColors.online
+                                            : AppColors.primaryAccentLight,
                                         fontWeight: FontWeight.w700,
                                         fontSize: 11,
                                       ),
@@ -175,17 +203,24 @@ class ActiveCallOverlayWrapper extends ConsumerWidget {
                           ),
                         ),
 
-                        // Return to Call Chip Button
+                        // Return to Call button
                         ElevatedButton.icon(
                           onPressed: returnToCall,
-                          icon: const Icon(Icons.arrow_upward_rounded, size: 14, color: Colors.white),
+                          icon: const Icon(Icons.phone_in_talk_rounded,
+                              size: 14, color: Colors.white),
                           label: const Text(
                             'Return',
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Colors.white),
+                            style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white),
                           ),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: isConnected ? AppColors.online : AppColors.primaryAccent,
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            backgroundColor: isConnected
+                                ? AppColors.online
+                                : AppColors.primaryAccent,
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 8),
                             minimumSize: Size.zero,
                             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                             shape: RoundedRectangleBorder(
@@ -196,11 +231,12 @@ class ActiveCallOverlayWrapper extends ConsumerWidget {
 
                         const SizedBox(width: 8),
 
-                        // Quick End Call Button
+                        // Quick End Call button
                         GestureDetector(
-                          onTap: () {
-                            ref.read(callingControllerProvider.notifier).endCall();
-                          },
+                          onTap: () =>
+                              ref
+                                  .read(callingControllerProvider.notifier)
+                                  .endCall(),
                           child: Container(
                             padding: const EdgeInsets.all(8),
                             decoration: const BoxDecoration(
