@@ -5,19 +5,19 @@
   <br/><br/>
   <h1>⚡ VYBE</h1>
   <p><strong>A Production-Ready Voice-First Social Discovery & Real-Time Audio Platform</strong></p>
-  <p><em>Spontaneous 1-to-1 Voice Calls • Clubhouse-Style Group Stages • Interest-Based Radar • Virtual Gifts & Secure Ledger</em></p>
+  <p><em>Spontaneous 1-to-1 Voice Calls • Live Voice Stages • Interest-Based Radar • Virtual Gifts & Secure Ledger</em></p>
 </div>
 
 ---
 
 ## 🌟 Executive Summary
 
-**VYBE is NOT a dating application.** It is a modern, voice-first social discovery platform designed to foster real human connections through spontaneous voice calls, interest-driven discovery, and Clubhouse-style group audio stages.
+**VYBE is NOT a dating application.** It is a modern, voice-first social discovery platform designed to foster real human connections through spontaneous voice calls, interest-driven discovery, and interactive group audio stages.
 
 ### Core Value Pillars
 1. **Voice-First Social Radar**: Real-time discovery based on online presence, shared interests, and discovery preferences.
 2. **Instant 1-to-1 Voice Calling**: Full-duplex audio calling powered by Agora RTC with dynamic tokens generated exclusively on the backend.
-3. **Clubhouse-Style Live Audio Rooms**: Multi-speaker stages featuring Host, Co-host, Speaker, and Listener roles, with raise-hand requests and audience participation.
+3. **Interactive Live Audio Rooms**: Multi-speaker stages featuring Host, Co-host, Speaker, and Listener roles, with raise-hand requests and audience participation.
 4. **Virtual Gifting & Secure Coin Wallet**: Cryptographically secure ledger preventing client-side tampering, backed by atomic database transactions.
 5. **Safety, Privacy & Moderation**: Adult 18+ platform with consent controls, block lists, report handling, and an administrative web dashboard.
 
@@ -89,7 +89,7 @@ Date/
     │   │   ├── discovery/              # Home radar, gender filters, online carousel
     │   │   ├── profile/                # Multi-step Profile Builder & details viewer
     │   │   ├── calling/                # 1-on-1 full screen call screen & call history
-    │   │   ├── groups/                 # Live Voice Rooms & Clubhouse stage
+    │   │   ├── groups/                 # Live Voice Rooms & Stages
     │   │   ├── wallet/                 # Coin balance, gifts bottom sheet & ledger
     │   │   ├── chat/                   # Direct messaging
     │   │   ├── notifications/          # Realtime notification center

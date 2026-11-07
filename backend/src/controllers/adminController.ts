@@ -170,7 +170,7 @@ export class AdminController {
     </div>
   </div>
 
-  <div class="section-title">Active Live Clubhouse Voice Rooms</div>
+  <div class="section-title">Active Live Audio Voice Rooms</div>
   <table>
     <thead>
       <tr>

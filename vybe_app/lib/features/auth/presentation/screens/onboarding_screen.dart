@@ -25,7 +25,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       'title': 'Live Group Audio\nRooms & Stages',
       'subtitle': 'Join late-night discussions, music listening sessions, and tech debates. Raise your hand to speak or just chill in the audience.',
       'icon': 'mic',
-      'highlight': 'Clubhouse Vibe',
+      'highlight': 'Live Stages',
     },
     {
       'title': 'Build Friendships &\nSend Virtual Gifts',

@@ -143,6 +143,17 @@ class AgoraVoiceService {
     }
   }
 
+  Future<void> setMuted(bool muted) async {
+    _isMuted = muted;
+    try {
+      if (_engine != null) {
+        await _engine!.muteLocalAudioStream(_isMuted);
+      }
+    } catch (e) {
+      debugPrint('[Agora] Set muted error: $e');
+    }
+  }
+
   Future<void> toggleMute() async {
     _isMuted = !_isMuted;
     try {

@@ -66,9 +66,17 @@ router.post('/groups/:id/join', authenticateJwt, GroupController.joinGroup);
 // Live Group Rooms
 router.get('/rooms/live', authenticateJwt, RoomController.listLiveRooms);
 router.post('/rooms/create', authenticateJwt, RoomController.createRoom);
+router.get('/rooms/:id', authenticateJwt, RoomController.getRoomDetails);
 router.post('/rooms/:id/join', authenticateJwt, RoomController.joinRoom);
 router.post('/rooms/:id/raise-hand', authenticateJwt, RoomController.raiseHand);
+router.post('/rooms/:id/lower-hand', authenticateJwt, RoomController.lowerHand);
 router.post('/rooms/:id/approve-speaker', authenticateJwt, RoomController.approveSpeaker);
+router.post('/rooms/:id/invite-to-speak', authenticateJwt, RoomController.inviteToSpeak);
+router.post('/rooms/:id/accept-invitation', authenticateJwt, RoomController.acceptInvitation);
+router.post('/rooms/:id/mute-speaker', authenticateJwt, RoomController.muteSpeaker);
+router.post('/rooms/:id/demote-speaker', authenticateJwt, RoomController.demoteSpeaker);
+router.post('/rooms/:id/kick-user', authenticateJwt, RoomController.kickUser);
+router.post('/rooms/:id/make-subhost', authenticateJwt, RoomController.makeSubHost);
 router.post('/rooms/:id/leave', authenticateJwt, RoomController.leaveRoom);
 
 // Gifts & Wallet

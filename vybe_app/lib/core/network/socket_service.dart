@@ -19,6 +19,14 @@ class SocketService {
   final _walletUpdatedController = StreamController<Map<String, dynamic>>.broadcast();
   final _notificationController = StreamController<Map<String, dynamic>>.broadcast();
   final _roomSpeakerController = StreamController<Map<String, dynamic>>.broadcast();
+  final _roomUpdatedController = StreamController<Map<String, dynamic>>.broadcast();
+  final _speakerRequestsController = StreamController<Map<String, dynamic>>.broadcast();
+  final _roomInvitationController = StreamController<Map<String, dynamic>>.broadcast();
+  final _speakerApprovedController = StreamController<Map<String, dynamic>>.broadcast();
+  final _speakerMutedController = StreamController<Map<String, dynamic>>.broadcast();
+  final _userKickedController = StreamController<Map<String, dynamic>>.broadcast();
+  final _hostChangedController = StreamController<Map<String, dynamic>>.broadcast();
+  final _roomEndedController = StreamController<Map<String, dynamic>>.broadcast();
   final _presenceChangeController = StreamController<Map<String, dynamic>>.broadcast();
   final _followedUserOnlineController = StreamController<Map<String, dynamic>>.broadcast();
   final _newFollowerController = StreamController<Map<String, dynamic>>.broadcast();
@@ -32,6 +40,14 @@ class SocketService {
   Stream<Map<String, dynamic>> get onNotificationReceived => _notificationController.stream;
   Stream<Map<String, dynamic>> get onNewFollower => _newFollowerController.stream;
   Stream<Map<String, dynamic>> get onRoomSpeakerUpdated => _roomSpeakerController.stream;
+  Stream<Map<String, dynamic>> get onRoomUpdated => _roomUpdatedController.stream;
+  Stream<Map<String, dynamic>> get onSpeakerRequestsUpdated => _speakerRequestsController.stream;
+  Stream<Map<String, dynamic>> get onRoomInvitationToSpeak => _roomInvitationController.stream;
+  Stream<Map<String, dynamic>> get onSpeakerApproved => _speakerApprovedController.stream;
+  Stream<Map<String, dynamic>> get onSpeakerMuted => _speakerMutedController.stream;
+  Stream<Map<String, dynamic>> get onUserKicked => _userKickedController.stream;
+  Stream<Map<String, dynamic>> get onHostChanged => _hostChangedController.stream;
+  Stream<Map<String, dynamic>> get onRoomEnded => _roomEndedController.stream;
   Stream<Map<String, dynamic>> get onPresenceChanged => _presenceChangeController.stream;
   Stream<Map<String, dynamic>> get onFollowedUserOnline => _followedUserOnlineController.stream;
 
@@ -140,6 +156,60 @@ class SocketService {
       _socket!.on('speaker_list_updated', (data) {
         if (data is Map) {
           _roomSpeakerController.add(Map<String, dynamic>.from(data));
+        }
+      });
+
+      _socket!.on('room_updated', (data) {
+        if (data is Map) {
+          _roomUpdatedController.add(Map<String, dynamic>.from(data));
+        }
+      });
+
+      _socket!.on('speaker_requests_updated', (data) {
+        if (data is Map) {
+          _speakerRequestsController.add(Map<String, dynamic>.from(data));
+        }
+      });
+
+      _socket!.on('speaker_request_received', (data) {
+        if (data is Map) {
+          _speakerRequestsController.add(Map<String, dynamic>.from(data));
+        }
+      });
+
+      _socket!.on('room_invitation_to_speak', (data) {
+        if (data is Map) {
+          _roomInvitationController.add(Map<String, dynamic>.from(data));
+        }
+      });
+
+      _socket!.on('speaker_approved', (data) {
+        if (data is Map) {
+          _speakerApprovedController.add(Map<String, dynamic>.from(data));
+        }
+      });
+
+      _socket!.on('speaker_muted', (data) {
+        if (data is Map) {
+          _speakerMutedController.add(Map<String, dynamic>.from(data));
+        }
+      });
+
+      _socket!.on('user_kicked', (data) {
+        if (data is Map) {
+          _userKickedController.add(Map<String, dynamic>.from(data));
+        }
+      });
+
+      _socket!.on('host_changed', (data) {
+        if (data is Map) {
+          _hostChangedController.add(Map<String, dynamic>.from(data));
+        }
+      });
+
+      _socket!.on('room_ended', (data) {
+        if (data is Map) {
+          _roomEndedController.add(Map<String, dynamic>.from(data));
         }
       });
 

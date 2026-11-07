@@ -53,7 +53,7 @@ class RoomsScreen extends ConsumerWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Clubhouse-Style Stages', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16)),
+                          Text('Live Voice Stages', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16)),
                           SizedBox(height: 2),
                           Text('Join spontaneous live group audio rooms. Listen or raise your hand to speak.', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
                         ],
@@ -300,72 +300,86 @@ class RoomsScreen extends ConsumerWidget {
   void _showCreateRoomDialog(BuildContext context, WidgetRef ref) {
     final titleController = TextEditingController();
     final topicController = TextEditingController();
+    bool isSubmitting = false;
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
-          left: 24,
-          right: 24,
-          top: 24,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Start a Live Voice Room',
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 20),
-            ),
-            const SizedBox(height: 6),
-            const Text(
-              'Anyone on VYBE can tune in and request to speak.',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
-            ),
-            const SizedBox(height: 20),
-            TextField(
-              controller: titleController,
-              style: const TextStyle(color: Colors.white),
-              decoration: const InputDecoration(
-                hintText: 'What do you want to talk about? (e.g. Indie Music)',
-                prefixIcon: Icon(Icons.title_rounded, color: AppColors.textMuted),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setState) => Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+            left: 24,
+            right: 24,
+            top: 24,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Start a Live Voice Room',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 20),
               ),
-            ),
-            const SizedBox(height: 14),
-            TextField(
-              controller: topicController,
-              style: const TextStyle(color: Colors.white),
-              decoration: const InputDecoration(
-                hintText: 'Topic / Tag (e.g. Music, Tech)',
-                prefixIcon: Icon(Icons.tag_rounded, color: AppColors.textMuted),
+              const SizedBox(height: 6),
+              const Text(
+                'Anyone on VYBE can tune in and request to speak.',
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
               ),
-            ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () async {
-                  final roomTitle = titleController.text.trim().isEmpty ? 'Open Voice Stage' : titleController.text.trim();
-                  final roomTopic = topicController.text.trim().isEmpty ? 'General' : topicController.text.trim();
+              const SizedBox(height: 20),
+              TextField(
+                controller: titleController,
+                enabled: !isSubmitting,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  hintText: 'What do you want to talk about? (e.g. Indie Music)',
+                  prefixIcon: Icon(Icons.title_rounded, color: AppColors.textMuted),
+                ),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: topicController,
+                enabled: !isSubmitting,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  hintText: 'Topic / Tag (e.g. Music, Tech)',
+                  prefixIcon: Icon(Icons.tag_rounded, color: AppColors.textMuted),
+                ),
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: isSubmitting
+                      ? null
+                      : () async {
+                          setState(() => isSubmitting = true);
+                          final roomTitle = titleController.text.trim().isEmpty ? 'Open Voice Stage' : titleController.text.trim();
+                          final roomTopic = topicController.text.trim().isEmpty ? 'General' : topicController.text.trim();
 
-                  final createdRoom = await ref.read(roomsControllerProvider.notifier).createRoom(
-                        title: roomTitle,
-                        topic: roomTopic,
-                      );
+                          final createdRoom = await ref.read(roomsControllerProvider.notifier).createRoom(
+                                title: roomTitle,
+                                topic: roomTopic,
+                              );
 
-                  if (context.mounted) {
-                    Navigator.pop(ctx);
-                    if (createdRoom != null) {
-                      context.push('/room/${createdRoom['id']}');
-                    }
-                  }
-                },
-                child: const Text('Go Live Now'),
+                          if (context.mounted) {
+                            Navigator.pop(ctx);
+                            if (createdRoom != null) {
+                              context.push('/room/${createdRoom['id']}');
+                            }
+                          }
+                        },
+                  child: isSubmitting
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Text('Go Live Now'),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
