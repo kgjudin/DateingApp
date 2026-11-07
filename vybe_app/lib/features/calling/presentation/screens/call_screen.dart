@@ -289,8 +289,10 @@ class _CallScreenState extends ConsumerState<CallScreen> {
   Widget build(BuildContext context) {
     final callingState = ref.watch(callingControllerProvider);
     final peer = callingState.peerProfile ?? {};
-    final peerId = peer['id']?.toString() ?? '';
-    final peerName = peer['displayName']?.toString() ?? 'Vybe User';
+    final peerId = (callingState.activePeerId.isNotEmpty)
+        ? callingState.activePeerId
+        : (peer['id']?.toString() ?? peer['userId']?.toString() ?? '');
+    final peerName = peer['displayName']?.toString() ?? peer['name']?.toString() ?? 'Vybe User';
 
     if (peerId.isNotEmpty && !_hasCheckedFollow) {
       _checkFollowStatus(peerId);

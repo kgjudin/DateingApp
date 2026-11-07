@@ -10,6 +10,7 @@ enum CallStatus { idle, initiating, ringing, connecting, connected, ended, faile
 class CallingState {
   final CallStatus status;
   final String? callId;
+  final String? peerId;
   final String? channelName;
   final String? agoraToken;
   final String? appId;
@@ -23,6 +24,7 @@ class CallingState {
   CallingState({
     this.status = CallStatus.idle,
     this.callId,
+    this.peerId,
     this.channelName,
     this.agoraToken,
     this.appId,
@@ -34,9 +36,17 @@ class CallingState {
     this.errorMessage,
   });
 
+  String get activePeerId {
+    if (peerId != null && peerId!.isNotEmpty) return peerId!;
+    final pId = peerProfile?['id']?.toString() ?? peerProfile?['userId']?.toString();
+    if (pId != null && pId.isNotEmpty) return pId;
+    return '';
+  }
+
   CallingState copyWith({
     CallStatus? status,
     String? callId,
+    String? peerId,
     String? channelName,
     String? agoraToken,
     String? appId,
@@ -50,6 +60,7 @@ class CallingState {
     return CallingState(
       status: status ?? this.status,
       callId: callId ?? this.callId,
+      peerId: peerId ?? this.peerId,
       channelName: channelName ?? this.channelName,
       agoraToken: agoraToken ?? this.agoraToken,
       appId: appId ?? this.appId,
@@ -84,8 +95,16 @@ class CallingController extends StateNotifier<CallingState> {
     _socketCallAcceptedSub = socket.onCallAccepted.listen((data) {
       if (state.status == CallStatus.ringing || state.status == CallStatus.connecting || state.status == CallStatus.initiating) {
         debugPrint('[Calling] Socket event: Call accepted by peer!');
-        if (data is Map && data['receiver'] != null && data['receiver'] is Map) {
-          state = state.copyWith(peerProfile: Map<String, dynamic>.from(data['receiver']));
+        if (data['receiver'] != null && data['receiver'] is Map) {
+          final rMap = Map<String, dynamic>.from(data['receiver']);
+          final rId = rMap['id']?.toString() ?? state.peerId;
+          state = state.copyWith(
+            peerId: rId,
+            peerProfile: {
+              'id': rId,
+              ...rMap,
+            },
+          );
         }
         _onCallConnected();
       }
@@ -102,9 +121,14 @@ class CallingController extends StateNotifier<CallingState> {
     required Map<String, dynamic> receiverProfile,
   }) async {
     _autoConnectTimer?.cancel();
+    final profileWithId = {
+      'id': receiverId,
+      ...receiverProfile,
+    };
     state = state.copyWith(
       status: CallStatus.initiating,
-      peerProfile: receiverProfile,
+      peerId: receiverId,
+      peerProfile: profileWithId,
       durationSeconds: 0,
       errorMessage: null,
     );
@@ -120,12 +144,16 @@ class CallingController extends StateNotifier<CallingState> {
         final token = res['token'] as String;
         final appId = res['appId'] as String;
         final resolvedReceiver = (res['receiver'] != null && res['receiver'] is Map)
-            ? Map<String, dynamic>.from(res['receiver'])
-            : receiverProfile;
+            ? {
+                'id': receiverId,
+                ...Map<String, dynamic>.from(res['receiver']),
+              }
+            : profileWithId;
 
         state = state.copyWith(
           status: CallStatus.ringing,
           callId: callId,
+          peerId: receiverId,
           channelName: channelName,
           agoraToken: token,
           appId: appId,
@@ -159,6 +187,7 @@ class CallingController extends StateNotifier<CallingState> {
       debugPrint('[Calling] Start call notice: $e');
       state = state.copyWith(
         status: CallStatus.ringing,
+        peerId: receiverId,
         callId: 'call_${DateTime.now().millisecondsSinceEpoch}',
         channelName: 'vybe_channel_${DateTime.now().millisecondsSinceEpoch}',
       );
@@ -179,13 +208,18 @@ class CallingController extends StateNotifier<CallingState> {
     required Map<String, dynamic> callerProfile,
   }) async {
     _autoConnectTimer?.cancel();
+    final cId = callerProfile['id']?.toString() ?? callerProfile['userId']?.toString() ?? '';
     state = state.copyWith(
       status: CallStatus.connecting,
       callId: callId,
+      peerId: cId,
       channelName: channelName,
       agoraToken: token,
       appId: appId,
-      peerProfile: callerProfile,
+      peerProfile: {
+        'id': cId,
+        ...callerProfile,
+      },
     );
 
     try {

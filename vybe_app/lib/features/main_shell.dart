@@ -174,71 +174,8 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
   }
 
   void _listenForNewFollowers() {
-    final socket = ref.read(socketServiceProvider);
-    socket.onNewFollower.listen((data) {
-      if (!mounted) return;
-
-      final followerName = data['followerName'] ??
-          data['payload']?['displayName'] ??
-          data['title']?.toString().replaceAll('New Follower! 🎉', '').trim() ??
-          'Someone';
-      final followerId = data['followerId'] ??
-          data['payload']?['followerId'] ??
-          data['payload']?['userId'];
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          backgroundColor: AppColors.secondaryBackground,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: const BorderSide(color: AppColors.secondaryAccent, width: 1.5),
-          ),
-          content: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: AppColors.secondaryAccent.withOpacity(0.2),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.person_add_rounded, color: AppColors.secondaryAccent, size: 20),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '$followerName followed you! 🎉',
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14),
-                    ),
-                    const SizedBox(height: 2),
-                    const Text(
-                      'Follow back to meet when you\'re online.',
-                      style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          action: SnackBarAction(
-            label: 'VIEW',
-            textColor: AppColors.secondaryAccent,
-            onPressed: () {
-              if (followerId != null && followerId.toString().isNotEmpty) {
-                context.push('/profile/$followerId');
-              } else {
-                context.push('/notifications');
-              }
-            },
-          ),
-          duration: const Duration(seconds: 6),
-        ),
-      );
-    });
+    // Follow notifications are shown exclusively in the Notifications Screen (bell icon at top)
+    // as requested by the user, without any bottom popup interrupting the user.
   }
 
   void _listenForIncomingCalls() {

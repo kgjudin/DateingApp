@@ -86,6 +86,9 @@ router.post('/chat/send', authenticateJwt, ChatController.sendMessage);
 router.post('/chat/block', authenticateJwt, ChatController.blockUser);
 router.post('/chat/report', authenticateJwt, ChatController.reportUser);
 router.get('/notifications', authenticateJwt, ChatController.getNotifications);
+router.post('/notifications/mark-read', authenticateJwt, ChatController.markAllAsRead);
+router.post('/notifications/clear', authenticateJwt, ChatController.clearNotifications);
+router.delete('/notifications/clear', authenticateJwt, ChatController.clearNotifications);
 
 // Admin Console API & Dashboard
 router.get('/admin/stats', AdminController.getDashboardStats);

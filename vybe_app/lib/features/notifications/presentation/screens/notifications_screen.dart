@@ -77,13 +77,102 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
     }
   }
 
+  Future<void> _markAllAsRead() async {
+    if (_notifications.isEmpty) return;
+    setState(() {
+      for (final n in _notifications) {
+        if (n is Map) {
+          n['isRead'] = true;
+        }
+      }
+    });
+
+    try {
+      await ref.read(apiClientProvider).post('/notifications/mark-read');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            backgroundColor: AppColors.cardBackground,
+            content: Text('All notifications marked as read! ✓'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _clearAllNotifications() async {
+    if (_notifications.isEmpty) return;
+    final previous = List<dynamic>.from(_notifications);
+    setState(() {
+      _notifications = [];
+    });
+
+    try {
+      await ref.read(apiClientProvider).post('/notifications/clear');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            backgroundColor: AppColors.cardBackground,
+            content: Text('All notifications cleared! 🗑️'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _notifications = previous;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: AppColors.error,
+            content: Text('Failed to clear notifications: $e'),
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final unreadCount = _notifications.where((n) => n is Map && n['isRead'] != true).length;
+
     return Scaffold(
       backgroundColor: AppColors.primaryBackground,
       appBar: AppBar(
-        title: const Text('Notifications', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 20)),
+        title: Row(
+          children: [
+            const Text('Notifications', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 20)),
+            if (unreadCount > 0) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryAccent,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  '$unreadCount',
+                  style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800),
+                ),
+              ),
+            ],
+          ],
+        ),
         actions: [
+          if (_notifications.isNotEmpty) ...[
+            IconButton(
+              icon: const Icon(Icons.done_all_rounded, color: AppColors.primaryAccentLight, size: 22),
+              tooltip: 'Mark all as read',
+              onPressed: _markAllAsRead,
+            ),
+            IconButton(
+              icon: const Icon(Icons.delete_sweep_rounded, color: Color(0xFFFF5252), size: 22),
+              tooltip: 'Clear all notifications',
+              onPressed: _clearAllNotifications,
+            ),
+          ],
           IconButton(
             icon: const Icon(Icons.refresh_rounded, color: Colors.white70),
             tooltip: 'Refresh',
@@ -129,9 +218,84 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                   onRefresh: _fetchNotifications,
                   child: ListView.builder(
                     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                    itemCount: _notifications.length,
+                    itemCount: _notifications.length + 1,
                     itemBuilder: (context, index) {
-                      final item = _notifications[index];
+                      if (index == 0) {
+                        // Quick Action Header Bar: Mark as Read & Clear All
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: AppColors.secondaryBackground.withOpacity(0.6),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: AppColors.glassBorder),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                '${_notifications.length} ${_notifications.length == 1 ? 'Notification' : 'Notifications'}',
+                                style: const TextStyle(
+                                  color: AppColors.textSecondary,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              Row(
+                                children: [
+                                  InkWell(
+                                    borderRadius: BorderRadius.circular(8),
+                                    onTap: _markAllAsRead,
+                                    child: const Padding(
+                                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.done_all_rounded, size: 14, color: AppColors.primaryAccentLight),
+                                          SizedBox(width: 4),
+                                          Text(
+                                            'Mark read',
+                                            style: TextStyle(
+                                              color: AppColors.primaryAccentLight,
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  InkWell(
+                                    borderRadius: BorderRadius.circular(8),
+                                    onTap: _clearAllNotifications,
+                                    child: const Padding(
+                                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.delete_outline_rounded, size: 14, color: Color(0xFFFF5252)),
+                                          SizedBox(width: 4),
+                                          Text(
+                                            'Clear all',
+                                            style: TextStyle(
+                                              color: Color(0xFFFF5252),
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+
+                      final item = _notifications[index - 1];
                       return _buildNotificationCard(item);
                     },
                   ),
@@ -149,6 +313,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
     final isGift = type == 'gift_received';
     final isFriendOnline = type == 'friend_online';
     final isFollow = type == 'follow' || type == 'new_follower';
+    final isRead = item is Map && item['isRead'] == true;
 
     final giftEmoji = payload['emoji'] ?? '🎁';
     final coinAmount = payload['coinAmount'];
@@ -158,12 +323,21 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
       margin: const EdgeInsets.only(bottom: 12),
       child: GlassContainer(
         padding: const EdgeInsets.all(16),
-        onTap: isFollow && targetUserId != null && targetUserId.isNotEmpty
-            ? () => context.push('/profile/$targetUserId')
-            : null,
+        onTap: () {
+          if (item is Map) {
+            setState(() {
+              item['isRead'] = true;
+            });
+          }
+          if (isFollow && targetUserId != null && targetUserId.isNotEmpty) {
+            context.push('/profile/$targetUserId');
+          }
+        },
         border: isGift
             ? Border.all(color: const Color(0xFFFFD700).withOpacity(0.5), width: 1.2)
-            : null,
+            : !isRead
+                ? Border.all(color: AppColors.primaryAccent.withOpacity(0.5), width: 1.2)
+                : null,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -206,9 +380,26 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Expanded(
-                            child: Text(
-                              title,
-                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15),
+                            child: Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    title,
+                                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15),
+                                  ),
+                                ),
+                                if (!isRead) ...[
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    width: 8,
+                                    height: 8,
+                                    decoration: const BoxDecoration(
+                                      color: AppColors.primaryAccent,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                ],
+                              ],
                             ),
                           ),
                           if (isGift && coinAmount != null)

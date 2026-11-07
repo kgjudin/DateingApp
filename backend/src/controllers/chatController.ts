@@ -161,13 +161,54 @@ export class ChatController {
   // Notifications
   public static async getNotifications(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      const userId = req.user?.id;
-      if (!userId) {
+      const rawUserId = req.user?.id;
+      if (!rawUserId) {
         res.status(401).json({ success: false, error: { message: 'Unauthorized' } });
         return;
       }
-      const notifs = LocalDbStore.notifications.filter(n => n.userId === userId);
+      const userId = String(rawUserId).trim().toLowerCase();
+      const notifs = LocalDbStore.notifications.filter(
+        n => String(n.userId || '').trim().toLowerCase() === userId
+      );
       res.json({ success: true, data: notifs });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: { message: err.message } });
+    }
+  }
+
+  public static async markAllAsRead(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const rawUserId = req.user?.id;
+      if (!rawUserId) {
+        res.status(401).json({ success: false, error: { message: 'Unauthorized' } });
+        return;
+      }
+      const userId = String(rawUserId).trim().toLowerCase();
+      for (const n of LocalDbStore.notifications) {
+        if (String(n.userId || '').trim().toLowerCase() === userId) {
+          n.isRead = true;
+        }
+      }
+      LocalDbStore.saveToDisk();
+      res.json({ success: true, message: 'All notifications marked as read' });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: { message: err.message } });
+    }
+  }
+
+  public static async clearNotifications(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const rawUserId = req.user?.id;
+      if (!rawUserId) {
+        res.status(401).json({ success: false, error: { message: 'Unauthorized' } });
+        return;
+      }
+      const userId = String(rawUserId).trim().toLowerCase();
+      LocalDbStore.notifications = LocalDbStore.notifications.filter(
+        n => String(n.userId || '').trim().toLowerCase() !== userId
+      );
+      LocalDbStore.saveToDisk();
+      res.json({ success: true, message: 'All notifications cleared' });
     } catch (err: any) {
       res.status(500).json({ success: false, error: { message: err.message } });
     }

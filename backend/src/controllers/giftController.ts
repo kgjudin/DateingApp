@@ -14,7 +14,7 @@ export class GiftController {
 
   public static async sendGift(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      const senderId = req.user?.id;
+      const senderId = cleanUserId(req.user?.id);
       if (!senderId) {
         res.status(401).json({ success: false, error: { message: 'Unauthorized' } });
         return;
@@ -26,14 +26,11 @@ export class GiftController {
         return;
       }
 
-      if (senderId === receiverId) {
-        res.status(400).json({ success: false, error: { message: 'You cannot send gifts to yourself.' } });
-        return;
-      }
+      let targetReceiverId = cleanUserId(receiverId);
 
       // Check block settings
-      if (LocalDbStore.userBlocks.has(`${senderId}:${receiverId}`) ||
-          LocalDbStore.userBlocks.has(`${receiverId}:${senderId}`)) {
+      if (LocalDbStore.userBlocks.has(`${senderId}:${targetReceiverId}`) ||
+          LocalDbStore.userBlocks.has(`${targetReceiverId}:${senderId}`)) {
         res.status(403).json({ success: false, error: { message: 'Cannot send gift due to block settings.' } });
         return;
       }
@@ -48,7 +45,7 @@ export class GiftController {
       // Atomically check and deduct sender wallet
       let senderWallet = LocalDbStore.wallets.get(senderId);
       if (!senderWallet) {
-        senderWallet = { balance: 100, earned: 100, spent: 0 };
+        senderWallet = { balance: 500, earned: 500, spent: 0 };
         LocalDbStore.wallets.set(senderId, senderWallet);
       }
 
@@ -63,29 +60,38 @@ export class GiftController {
         return;
       }
 
-      // Process transaction
-      senderWallet.balance -= gift.coinPrice;
-      senderWallet.spent += gift.coinPrice;
-      LocalDbStore.wallets.set(senderId, senderWallet);
+      const isSelfGift = senderId === targetReceiverId;
 
-      // Credit receiver
-      let receiverWallet = LocalDbStore.wallets.get(receiverId);
-      if (!receiverWallet) {
-        receiverWallet = { balance: 100, earned: 100, spent: 0 };
+      if (!isSelfGift) {
+        // Process standard transfer from sender to receiver
+        senderWallet.balance -= gift.coinPrice;
+        senderWallet.spent += gift.coinPrice;
+        LocalDbStore.wallets.set(senderId, senderWallet);
+
+        let receiverWallet = LocalDbStore.wallets.get(targetReceiverId);
+        if (!receiverWallet) {
+          receiverWallet = { balance: 100, earned: 100, spent: 0 };
+        }
+        receiverWallet.balance += gift.coinPrice;
+        receiverWallet.earned += gift.coinPrice;
+        LocalDbStore.wallets.set(targetReceiverId, receiverWallet);
+      } else {
+        // In self/test call: deduct without transfer error so animation and flow work
+        senderWallet.spent += gift.coinPrice;
+        LocalDbStore.wallets.set(senderId, senderWallet);
       }
-      receiverWallet.balance += gift.coinPrice;
-      receiverWallet.earned += gift.coinPrice;
-      LocalDbStore.wallets.set(receiverId, receiverWallet);
+
+      const receiverWallet = LocalDbStore.wallets.get(targetReceiverId) || senderWallet;
 
       const txId = `tx_gift_${Date.now()}`;
-      const senderProfile = LocalDbStore.profiles.get(senderId) || { displayName: 'Vyber' };
-      const receiverProfile = LocalDbStore.profiles.get(receiverId) || { displayName: 'Vyber' };
+      const senderProfile = LocalDbStore.profiles.get(senderId) || { displayName: req.user?.displayName || 'Vyber' };
+      const receiverProfile = LocalDbStore.profiles.get(targetReceiverId) || { displayName: 'Vyber' };
       const giftEmoji = (gift as any).emoji || '🎁';
 
       const giftTx = {
         id: txId,
         senderId,
-        receiverId,
+        receiverId: targetReceiverId,
         senderName: senderProfile.displayName,
         receiverName: receiverProfile.displayName,
         senderAvatar: senderProfile.avatarUrl,
@@ -152,8 +158,8 @@ export class GiftController {
           receiverNewBalance: receiverWallet.balance
         };
 
-        const rTarget = cleanUserId(receiverId);
-        const sTarget = cleanUserId(senderId);
+        const rTarget = targetReceiverId;
+        const sTarget = senderId;
 
         // 1. Direct delivery to receiver's user channel
         io.to(`user:${rTarget}`).emit('gift_received', giftPayload);

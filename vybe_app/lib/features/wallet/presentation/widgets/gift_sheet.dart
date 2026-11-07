@@ -58,6 +58,10 @@ class _GiftBottomSheetState extends ConsumerState<GiftBottomSheet> {
 
   Future<void> _sendGift() async {
     if (_selectedGiftId == null) return;
+    if (widget.receiverId.trim().isEmpty) {
+      setState(() => _statusMessage = 'Receiver information unavailable.');
+      return;
+    }
     final selectedGift = _gifts.firstWhere((g) => g['id'] == _selectedGiftId);
 
     final currentCoins = ref.read(authControllerProvider).coinBalance;
@@ -81,7 +85,6 @@ class _GiftBottomSheetState extends ConsumerState<GiftBottomSheet> {
       if (res is Map && res['senderNewBalance'] != null) {
         ref.read(authControllerProvider.notifier).updateCoinBalance(res['senderNewBalance'] as int);
       } else {
-        // Fallback deduction
         ref.read(authControllerProvider.notifier).updateCoinBalance(currentCoins - (selectedGift['price'] as int));
       }
 
@@ -118,33 +121,14 @@ class _GiftBottomSheetState extends ConsumerState<GiftBottomSheet> {
         );
       }
     } catch (e) {
-      // Offline fallback deduction for testing
-      ref.read(authControllerProvider.notifier).updateCoinBalance(currentCoins - (selectedGift['price'] as int));
-      final user = ref.read(authControllerProvider).user;
-      final myId = user?['id']?.toString() ?? '';
-      final myName = user?['displayName']?.toString() ?? user?['username']?.toString() ?? 'You';
-
-      final giftPayload = {
-        'giftId': selectedGift['id'],
-        'giftName': selectedGift['name'],
-        'emoji': selectedGift['emoji'],
-        'coinAmount': selectedGift['price'],
-        'senderId': myId,
-        'senderName': myName,
-        'receiverId': widget.receiverId,
-        'receiverName': widget.receiverName,
-        'isSender': true,
-      };
-
       if (mounted) {
-        widget.onGiftSent?.call(giftPayload);
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            backgroundColor: AppColors.cardBackground,
-            content: Text('Sent ${selectedGift['name']} to ${widget.receiverName}! 🎁'),
-          ),
-        );
+        setState(() {
+          _isSending = false;
+          _statusMessage = e
+              .toString()
+              .replaceFirst('ApiException: ', '')
+              .replaceFirst('Exception: ', '');
+        });
       }
     }
   }
