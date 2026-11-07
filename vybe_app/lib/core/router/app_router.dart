@@ -13,23 +13,24 @@ import '../../features/profile/presentation/screens/profile_details_screen.dart'
 import '../../features/wallet/presentation/screens/wallet_screen.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
-  final authState = ref.watch(authControllerProvider);
+  // Only watch isAuthenticated so coin balance or profile updates do NOT
+  // re-create GoRouter and destroy the active call or modal screen!
+  final isAuthenticated = ref.watch(authControllerProvider.select((s) => s.isAuthenticated));
 
   return GoRouter(
-    initialLocation: authState.isAuthenticated ? '/home' : '/onboarding',
+    initialLocation: isAuthenticated ? '/home' : '/onboarding',
     redirect: (context, state) {
-      final isAuth = authState.isAuthenticated;
       final isAuthPath = state.matchedLocation == '/login' ||
           state.matchedLocation == '/onboarding' ||
           state.matchedLocation == '/profile-builder';
 
       // If not logged in and not on an auth screen, redirect to onboarding
-      if (!isAuth && !isAuthPath) {
+      if (!isAuthenticated && !isAuthPath) {
         return '/onboarding';
       }
 
       // If logged in and on an auth screen, redirect to home
-      if (isAuth && isAuthPath) {
+      if (isAuthenticated && isAuthPath) {
         return '/home';
       }
 

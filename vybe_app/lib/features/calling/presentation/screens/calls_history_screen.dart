@@ -289,6 +289,7 @@ class _CallsHistoryScreenState extends ConsumerState<CallsHistoryScreen> {
                                   ref.read(callingControllerProvider.notifier).startCall(
                                         receiverId: friendId,
                                         receiverProfile: {
+                                          'id': friendId,
                                           'displayName': friendName,
                                           'avatarUrl': friendAvatar,
                                         },

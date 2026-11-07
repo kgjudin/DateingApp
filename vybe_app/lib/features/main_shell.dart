@@ -158,6 +158,7 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
                   ref.read(callingControllerProvider.notifier).startCall(
                         receiverId: userId,
                         receiverProfile: {
+                          'id': userId,
                           'displayName': name,
                           'avatarUrl': data['avatarUrl'],
                         },

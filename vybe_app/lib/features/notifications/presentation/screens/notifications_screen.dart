@@ -466,6 +466,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                       ref.read(callingControllerProvider.notifier).startCall(
                             receiverId: payload['userId'],
                             receiverProfile: {
+                              'id': payload['userId'],
                               'displayName': payload['displayName'] ?? 'Friend',
                               'avatarUrl': payload['avatarUrl'],
                             },
