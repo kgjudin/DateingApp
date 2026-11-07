@@ -83,6 +83,7 @@ class RoomsController extends StateNotifier<RoomState> {
   StreamSubscription? _invitationSub;
   StreamSubscription? _speakerApprovedSub;
   StreamSubscription? _speakerMutedSub;
+  StreamSubscription? _speakerDemotedSub;
   StreamSubscription? _userKickedSub;
   StreamSubscription? _hostChangedSub;
   StreamSubscription? _roomEndedSub;
@@ -106,6 +107,21 @@ class RoomsController extends StateNotifier<RoomState> {
       if (state.activeRoom != null && data['speakers'] is List) {
         final updatedRoom = Map<String, dynamic>.from(state.activeRoom!);
         updatedRoom['speakers'] = data['speakers'];
+
+        final currentUserId = _ref.read(authControllerProvider).user?['id']?.toString() ?? '';
+        final mySpeaker = (data['speakers'] as List).firstWhere(
+          (s) => s['userId']?.toString() == currentUserId,
+          orElse: () => null,
+        );
+        if (mySpeaker != null) {
+          final serverMuted = mySpeaker['isMuted'] == true;
+          if (serverMuted != state.isMuted) {
+            _ref.read(agoraVoiceServiceProvider).setMuted(serverMuted);
+            state = state.copyWith(activeRoom: updatedRoom, isMuted: serverMuted);
+            return;
+          }
+        }
+
         state = state.copyWith(activeRoom: updatedRoom);
       }
     });
@@ -128,6 +144,8 @@ class RoomsController extends StateNotifier<RoomState> {
           role = 'subhost';
         } else if ((updatedRoom['speakers'] as List? ?? []).any((s) => s['userId']?.toString() == currentUserId)) {
           role = 'speaker';
+        } else {
+          role = 'listener';
         }
 
         final requests = data['speakerRequests'] is List ? (data['speakerRequests'] as List) : state.speakerRequests;
@@ -151,19 +169,11 @@ class RoomsController extends StateNotifier<RoomState> {
     });
 
     _speakerApprovedSub = socket.onSpeakerApproved.listen((data) async {
-      // Current user was approved to speak
-      final token = data['token'] ?? '';
-      final appId = data['appId'] ?? 'test_agora_app_id_vybe';
-      final roomId = state.activeRoom?['id'] ?? '';
-
-      await _ref.read(agoraVoiceServiceProvider).joinVoiceChannel(
-            appId: appId,
-            channelId: state.activeRoom?['channelName'] ?? 'vybe_room_$roomId',
-            token: token,
+      await _ref.read(agoraVoiceServiceProvider).updateRole(
             isPublisher: true,
+            isMuted: false,
           );
 
-      await _ref.read(agoraVoiceServiceProvider).setMuted(false);
       state = state.copyWith(
         currentRole: 'speaker',
         isMuted: false,
@@ -176,6 +186,14 @@ class RoomsController extends StateNotifier<RoomState> {
       final isMuted = data['isMuted'] == true;
       await _ref.read(agoraVoiceServiceProvider).setMuted(isMuted);
       state = state.copyWith(isMuted: isMuted);
+    });
+
+    _speakerDemotedSub = socket.onSpeakerDemoted.listen((data) async {
+      await _ref.read(agoraVoiceServiceProvider).updateRole(
+            isPublisher: false,
+            isMuted: true,
+          );
+      state = state.copyWith(currentRole: 'listener', isMuted: true);
     });
 
     _userKickedSub = socket.onUserKicked.listen((data) async {
@@ -218,7 +236,6 @@ class RoomsController extends StateNotifier<RoomState> {
       final roomsRes = await _ref.read(apiClientProvider).get('/rooms/live');
       final groupsRes = await _ref.read(apiClientProvider).get('/groups');
 
-      // Deduplicate live rooms by id
       final seen = <String>{};
       final uniqueRooms = <dynamic>[];
       if (roomsRes is List) {
@@ -268,16 +285,15 @@ class RoomsController extends StateNotifier<RoomState> {
 
         _ref.read(socketServiceProvider).joinRoomChannel(roomId, currentUserId);
 
+        // Host is broadcaster with unmuted mic initially
         await _ref.read(agoraVoiceServiceProvider).joinVoiceChannel(
               appId: appId,
               channelId: roomData['channelName'] ?? 'vybe_room_$roomId',
               token: token,
               isPublisher: true,
+              initiallyMuted: false,
             );
 
-        await _ref.read(agoraVoiceServiceProvider).setMuted(false);
-
-        // Deduplicate in liveRooms list
         final seen = <String>{roomId.toString()};
         final updatedRooms = <dynamic>[roomData];
         for (final r in state.liveRooms) {
@@ -321,16 +337,15 @@ class RoomsController extends StateNotifier<RoomState> {
       _ref.read(socketServiceProvider).joinRoomChannel(roomId, currentUserId);
 
       final isPublisher = role == 'host' || role == 'subhost' || role == 'speaker';
+
+      // Connect to Agora: If not publisher, mic is strictly disabled and muted!
       await _ref.read(agoraVoiceServiceProvider).joinVoiceChannel(
             appId: appId,
             channelId: room['channelName'] ?? 'vybe_room_$roomId',
             token: token,
             isPublisher: isPublisher,
+            initiallyMuted: !isPublisher,
           );
-
-      if (!isPublisher) {
-        await _ref.read(agoraVoiceServiceProvider).setMuted(true);
-      }
 
       final requests = res?['speakerRequests'] is List ? (res!['speakerRequests'] as List) : [];
 
@@ -412,6 +427,10 @@ class RoomsController extends StateNotifier<RoomState> {
 
     try {
       final res = await _ref.read(apiClientProvider).post('/rooms/$roomId/accept-invitation');
+      await _ref.read(agoraVoiceServiceProvider).updateRole(
+            isPublisher: true,
+            isMuted: false,
+          );
       state = state.copyWith(
         clearPendingInvitation: true,
         currentRole: 'speaker',
@@ -419,7 +438,6 @@ class RoomsController extends StateNotifier<RoomState> {
         isHandRaised: false,
         activeRoom: res is Map ? Map<String, dynamic>.from(res) : state.activeRoom,
       );
-      await _ref.read(agoraVoiceServiceProvider).setMuted(false);
     } catch (_) {
       state = state.copyWith(clearPendingInvitation: true);
     }
@@ -432,12 +450,32 @@ class RoomsController extends StateNotifier<RoomState> {
   Future<void> muteSpeaker(String targetUserId, {bool isMuted = true}) async {
     if (state.activeRoom == null) return;
     final roomId = state.activeRoom!['id']?.toString() ?? '';
+    final currentUserId = _ref.read(authControllerProvider).user?['id']?.toString() ?? '';
+
+    if (targetUserId == currentUserId) {
+      await toggleMic();
+      return;
+    }
 
     try {
       await _ref.read(apiClientProvider).post('/rooms/$roomId/mute-speaker', body: {
         'targetUserId': targetUserId,
         'isMuted': isMuted,
       });
+
+      if (state.activeRoom != null && state.activeRoom!['speakers'] is List) {
+        final updatedRoom = Map<String, dynamic>.from(state.activeRoom!);
+        final updatedSpeakers = (updatedRoom['speakers'] as List).map((s) {
+          if (s['userId']?.toString() == targetUserId) {
+            final copy = Map<String, dynamic>.from(s);
+            copy['isMuted'] = isMuted;
+            return copy;
+          }
+          return s;
+        }).toList();
+        updatedRoom['speakers'] = updatedSpeakers;
+        state = state.copyWith(activeRoom: updatedRoom);
+      }
     } catch (e) {
       state = state.copyWith(errorMessage: e.toString());
     }
@@ -484,8 +522,39 @@ class RoomsController extends StateNotifier<RoomState> {
 
   Future<void> toggleMic() async {
     if (state.currentRole == 'listener') return;
+    final roomId = state.activeRoom?['id']?.toString() ?? '';
+    final currentUserId = _ref.read(authControllerProvider).user?['id']?.toString() ?? '';
+
+    // 1. Instant local microphone hardware mute/unmute
     await _ref.read(agoraVoiceServiceProvider).toggleMute();
-    state = state.copyWith(isMuted: _ref.read(agoraVoiceServiceProvider).isMuted);
+    final newMuteState = _ref.read(agoraVoiceServiceProvider).isMuted;
+    state = state.copyWith(isMuted: newMuteState);
+
+    // 2. Instant local UI update
+    if (state.activeRoom != null && state.activeRoom!['speakers'] is List) {
+      final updatedRoom = Map<String, dynamic>.from(state.activeRoom!);
+      final updatedSpeakers = (updatedRoom['speakers'] as List).map((s) {
+        if (s['userId']?.toString() == currentUserId) {
+          final copy = Map<String, dynamic>.from(s);
+          copy['isMuted'] = newMuteState;
+          return copy;
+        }
+        return s;
+      }).toList();
+      updatedRoom['speakers'] = updatedSpeakers;
+      state = state.copyWith(activeRoom: updatedRoom);
+    }
+
+    // 3. Instant realtime socket broadcast to all devices in the room
+    if (roomId.isNotEmpty && currentUserId.isNotEmpty) {
+      _ref.read(socketServiceProvider).toggleSelfMute(roomId, currentUserId, newMuteState);
+
+      // 4. Background HTTP persistence
+      _ref.read(apiClientProvider).post('/rooms/$roomId/mute-speaker', body: {
+        'targetUserId': currentUserId,
+        'isMuted': newMuteState,
+      }).catchError((_) => null);
+    }
   }
 
   Future<void> leaveActiveRoom({String? newSubHostId, bool endRoomForEveryone = false}) async {
@@ -512,7 +581,6 @@ class RoomsController extends StateNotifier<RoomState> {
       clearPendingInvitation: true,
     );
 
-    // Refresh rooms list
     fetchRoomsAndGroups();
   }
 
@@ -525,6 +593,7 @@ class RoomsController extends StateNotifier<RoomState> {
     _invitationSub?.cancel();
     _speakerApprovedSub?.cancel();
     _speakerMutedSub?.cancel();
+    _speakerDemotedSub?.cancel();
     _userKickedSub?.cancel();
     _hostChangedSub?.cancel();
     _roomEndedSub?.cancel();

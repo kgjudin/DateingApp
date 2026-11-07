@@ -24,6 +24,7 @@ class SocketService {
   final _roomInvitationController = StreamController<Map<String, dynamic>>.broadcast();
   final _speakerApprovedController = StreamController<Map<String, dynamic>>.broadcast();
   final _speakerMutedController = StreamController<Map<String, dynamic>>.broadcast();
+  final _speakerDemotedController = StreamController<Map<String, dynamic>>.broadcast();
   final _userKickedController = StreamController<Map<String, dynamic>>.broadcast();
   final _hostChangedController = StreamController<Map<String, dynamic>>.broadcast();
   final _roomEndedController = StreamController<Map<String, dynamic>>.broadcast();
@@ -45,6 +46,7 @@ class SocketService {
   Stream<Map<String, dynamic>> get onRoomInvitationToSpeak => _roomInvitationController.stream;
   Stream<Map<String, dynamic>> get onSpeakerApproved => _speakerApprovedController.stream;
   Stream<Map<String, dynamic>> get onSpeakerMuted => _speakerMutedController.stream;
+  Stream<Map<String, dynamic>> get onSpeakerDemoted => _speakerDemotedController.stream;
   Stream<Map<String, dynamic>> get onUserKicked => _userKickedController.stream;
   Stream<Map<String, dynamic>> get onHostChanged => _hostChangedController.stream;
   Stream<Map<String, dynamic>> get onRoomEnded => _roomEndedController.stream;
@@ -195,6 +197,12 @@ class SocketService {
         }
       });
 
+      _socket!.on('speaker_demoted', (data) {
+        if (data is Map) {
+          _speakerDemotedController.add(Map<String, dynamic>.from(data));
+        }
+      });
+
       _socket!.on('user_kicked', (data) {
         if (data is Map) {
           _userKickedController.add(Map<String, dynamic>.from(data));
@@ -235,6 +243,10 @@ class SocketService {
 
   void leaveRoomChannel(String roomId, String userId) {
     _socket?.emit('leave_room', {'roomId': roomId, 'userId': userId});
+  }
+
+  void toggleSelfMute(String roomId, String userId, bool isMuted) {
+    _socket?.emit('toggle_self_mute', {'roomId': roomId, 'userId': userId, 'isMuted': isMuted});
   }
 
   void _startHeartbeat(String userId) {

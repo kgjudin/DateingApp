@@ -9,7 +9,8 @@ final agoraVoiceServiceProvider = Provider<AgoraVoiceService>((ref) => AgoraVoic
 class AgoraVoiceService {
   RtcEngine? _engine;
   bool _isInitialized = false;
-  bool _isMuted = false;
+  bool _isPublisher = false;
+  bool _isMuted = true;
   bool _isSpeakerOn = true;
   String? _currentChannel;
 
@@ -22,6 +23,7 @@ class AgoraVoiceService {
   Stream<List<AudioVolumeInfo>> get onVolumeIndicator => _volumeIndicatorController.stream;
 
   bool get isMuted => _isMuted;
+  bool get isPublisher => _isPublisher;
   bool get isSpeakerOn => _isSpeakerOn;
   bool get isConnected => _currentChannel != null;
 
@@ -29,7 +31,7 @@ class AgoraVoiceService {
     if (_isInitialized && _engine != null) return true;
 
     try {
-      // Request microphone permission on mobile
+      // Request microphone permission on mobile only if needed
       if (!kIsWeb && (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS)) {
         final status = await Permission.microphone.request();
         if (status != PermissionStatus.granted) {
@@ -49,13 +51,21 @@ class AgoraVoiceService {
       _engine!.registerEventHandler(
         RtcEngineEventHandler(
           onJoinChannelSuccess: (RtcConnection connection, int elapsed) {
-            debugPrint('[Agora] Successfully joined channel: ${connection.channelId} localUid: ${connection.localUid}');
+            debugPrint('[Agora] Joined channel: ${connection.channelId} (localUid: ${connection.localUid}, isPublisher: $_isPublisher, isMuted: $_isMuted)');
             _currentChannel = connection.channelId;
-            try { _engine?.muteLocalAudioStream(false); } catch (_) {}
-            try { _engine?.muteAllRemoteAudioStreams(false); } catch (_) {}
+            try {
+              if (!_isPublisher || _isMuted) {
+                _engine?.muteLocalAudioStream(true);
+                _engine?.enableLocalAudio(false);
+              } else {
+                _engine?.enableLocalAudio(true);
+                _engine?.muteLocalAudioStream(false);
+              }
+              _engine?.muteAllRemoteAudioStreams(false);
+            } catch (_) {}
           },
           onUserJoined: (RtcConnection connection, int remoteUid, int elapsed) {
-            debugPrint('[Agora] Remote user joined: $remoteUid - unmuting remote audio stream');
+            debugPrint('[Agora] Remote user joined: $remoteUid - unmuting remote audio');
             _userJoinedController.add(remoteUid);
             try {
               _engine?.muteRemoteAudioStream(uid: remoteUid, mute: false);
@@ -80,9 +90,6 @@ class AgoraVoiceService {
       );
 
       try { await _engine!.enableAudio(); } catch (_) {}
-      try { await _engine!.enableLocalAudio(true); } catch (_) {}
-      try { await _engine!.muteLocalAudioStream(false); } catch (_) {}
-      try { await _engine!.muteAllRemoteAudioStreams(false); } catch (_) {}
       try { await _engine!.adjustRecordingSignalVolume(100); } catch (_) {}
       try { await _engine!.adjustPlaybackSignalVolume(100); } catch (_) {}
       if (!kIsWeb && (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS)) {
@@ -103,51 +110,143 @@ class AgoraVoiceService {
     required String channelId,
     required String token,
     required bool isPublisher,
+    bool initiallyMuted = false,
   }) async {
     await initialize(appId);
 
+    _isPublisher = isPublisher;
+    _isMuted = !isPublisher || initiallyMuted;
+
     try {
       if (_engine != null) {
-        try {
-          await _engine!.setClientRole(
-            role: ClientRoleType.clientRoleBroadcaster,
+        if (isPublisher) {
+          try {
+            await _engine!.setClientRole(role: ClientRoleType.clientRoleBroadcaster);
+          } catch (_) {}
+          try { await _engine!.enableAudio(); } catch (_) {}
+          try { await _engine!.enableLocalAudio(!_isMuted); } catch (_) {}
+
+          await _engine!.joinChannel(
+            token: token,
+            channelId: channelId,
+            uid: 0,
+            options: ChannelMediaOptions(
+              clientRoleType: ClientRoleType.clientRoleBroadcaster,
+              channelProfile: ChannelProfileType.channelProfileCommunication,
+              publishMicrophoneTrack: !_isMuted,
+              autoSubscribeAudio: true,
+              enableAudioRecordingOrPlayout: true,
+            ),
           );
-        } catch (_) {}
 
-        try { await _engine!.enableAudio(); } catch (_) {}
-        try { await _engine!.enableLocalAudio(true); } catch (_) {}
+          try { await _engine!.muteLocalAudioStream(_isMuted); } catch (_) {}
+        } else {
+          // Audience / Listener: Strictly disable local mic publishing
+          try {
+            await _engine!.setClientRole(role: ClientRoleType.clientRoleAudience);
+          } catch (_) {}
+          try { await _engine!.enableAudio(); } catch (_) {}
+          try { await _engine!.enableLocalAudio(false); } catch (_) {}
 
-        await _engine!.joinChannel(
-          token: token,
-          channelId: channelId,
-          uid: 0,
-          options: const ChannelMediaOptions(
-            clientRoleType: ClientRoleType.clientRoleBroadcaster,
-            channelProfile: ChannelProfileType.channelProfileCommunication,
-            publishMicrophoneTrack: true,
-            autoSubscribeAudio: true,
-            enableAudioRecordingOrPlayout: true,
-          ),
-        );
+          await _engine!.joinChannel(
+            token: token,
+            channelId: channelId,
+            uid: 0,
+            options: const ChannelMediaOptions(
+              clientRoleType: ClientRoleType.clientRoleAudience,
+              channelProfile: ChannelProfileType.channelProfileCommunication,
+              publishMicrophoneTrack: false,
+              autoSubscribeAudio: true,
+              enableAudioRecordingOrPlayout: true,
+            ),
+          );
 
-        try { await _engine!.muteLocalAudioStream(false); } catch (_) {}
+          try { await _engine!.muteLocalAudioStream(true); } catch (_) {}
+        }
+
         try { await _engine!.muteAllRemoteAudioStreams(false); } catch (_) {}
         try { await _engine!.adjustRecordingSignalVolume(100); } catch (_) {}
         try { await _engine!.adjustPlaybackSignalVolume(100); } catch (_) {}
       }
       _currentChannel = channelId;
-      _isMuted = false;
     } catch (e) {
       debugPrint('[Agora] Join channel error: $e');
       _currentChannel = channelId;
     }
   }
 
+  Future<void> updateRole({required bool isPublisher, bool isMuted = false}) async {
+    _isPublisher = isPublisher;
+    _isMuted = !isPublisher || isMuted;
+
+    try {
+      if (_engine != null) {
+        if (isPublisher) {
+          await _engine!.setClientRole(role: ClientRoleType.clientRoleBroadcaster);
+          await _engine!.enableLocalAudio(!_isMuted);
+          await _engine!.muteLocalAudioStream(_isMuted);
+          try {
+            await _engine!.updateChannelMediaOptions(
+              ChannelMediaOptions(
+                clientRoleType: ClientRoleType.clientRoleBroadcaster,
+                publishMicrophoneTrack: !_isMuted,
+                autoSubscribeAudio: true,
+              ),
+            );
+          } catch (_) {}
+        } else {
+          // Demote to audience: immediately silence mic
+          await _engine!.muteLocalAudioStream(true);
+          await _engine!.enableLocalAudio(false);
+          try {
+            await _engine!.updateChannelMediaOptions(
+              const ChannelMediaOptions(
+                clientRoleType: ClientRoleType.clientRoleAudience,
+                publishMicrophoneTrack: false,
+                autoSubscribeAudio: true,
+              ),
+            );
+          } catch (_) {}
+          await _engine!.setClientRole(role: ClientRoleType.clientRoleAudience);
+        }
+      }
+    } catch (e) {
+      debugPrint('[Agora] Update role error: $e');
+    }
+  }
+
   Future<void> setMuted(bool muted) async {
+    if (!_isPublisher) {
+      _isMuted = true;
+      try {
+        if (_engine != null) {
+          await _engine!.muteLocalAudioStream(true);
+          await _engine!.enableLocalAudio(false);
+        }
+      } catch (_) {}
+      return;
+    }
+
     _isMuted = muted;
     try {
       if (_engine != null) {
-        await _engine!.muteLocalAudioStream(_isMuted);
+        if (_isMuted) {
+          await _engine!.muteLocalAudioStream(true);
+          await _engine!.enableLocalAudio(false);
+          try {
+            await _engine!.updateChannelMediaOptions(
+              const ChannelMediaOptions(publishMicrophoneTrack: false),
+            );
+          } catch (_) {}
+        } else {
+          await _engine!.enableLocalAudio(true);
+          await _engine!.muteLocalAudioStream(false);
+          try {
+            await _engine!.updateChannelMediaOptions(
+              const ChannelMediaOptions(publishMicrophoneTrack: true),
+            );
+          } catch (_) {}
+        }
       }
     } catch (e) {
       debugPrint('[Agora] Set muted error: $e');
@@ -155,14 +254,8 @@ class AgoraVoiceService {
   }
 
   Future<void> toggleMute() async {
-    _isMuted = !_isMuted;
-    try {
-      if (_engine != null) {
-        await _engine!.muteLocalAudioStream(_isMuted);
-      }
-    } catch (e) {
-      debugPrint('[Agora] Mute error: $e');
-    }
+    if (!_isPublisher) return;
+    await setMuted(!_isMuted);
   }
 
   Future<void> toggleSpeaker() async {
@@ -179,13 +272,16 @@ class AgoraVoiceService {
   Future<void> leaveChannel() async {
     try {
       if (_engine != null && _currentChannel != null) {
+        try { await _engine!.muteLocalAudioStream(true); } catch (_) {}
+        try { await _engine!.enableLocalAudio(false); } catch (_) {}
         await _engine!.leaveChannel();
       }
     } catch (e) {
       debugPrint('[Agora] Leave error: $e');
     } finally {
       _currentChannel = null;
-      _isMuted = false;
+      _isPublisher = false;
+      _isMuted = true;
     }
   }
 

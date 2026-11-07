@@ -189,6 +189,24 @@ export function setupSocketHandlers(io: Server): void {
       }
     });
 
+    // Realtime speaker mute toggle
+    socket.on('toggle_self_mute', (data: { roomId: string; userId: string; isMuted: boolean }) => {
+      const uId = cleanUserId(data?.userId || (socket as any).userId || handshakeUserId);
+      const roomId = data?.roomId;
+      if (roomId && uId) {
+        const room = LocalDbStore.rooms.get(roomId);
+        if (room && room.isLive) {
+          const spk = room.speakers.find((s: any) => cleanUserId(s.userId) === uId);
+          if (spk) {
+            spk.isMuted = Boolean(data.isMuted);
+            LocalDbStore.rooms.set(roomId, room);
+            io.to(`room:${roomId}`).emit('speaker_list_updated', { speakers: room.speakers });
+            io.to(`room:${roomId}`).emit('room_updated', { room, speakers: room.speakers });
+          }
+        }
+      }
+    });
+
     // Typing indicators
     socket.on('typing_start', (data: { conversationId: string; receiverId: string }) => {
       const uId = cleanUserId((socket as any).userId || handshakeUserId);

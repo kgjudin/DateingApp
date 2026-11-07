@@ -259,7 +259,7 @@ class LiveVoiceRoomScreen extends ConsumerWidget {
                         physics: const NeverScrollableScrollPhysics(),
                         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: 3,
-                          childAspectRatio: 0.85,
+                          childAspectRatio: 0.82,
                           crossAxisSpacing: 16,
                           mainAxisSpacing: 16,
                         ),
@@ -269,12 +269,14 @@ class LiveVoiceRoomScreen extends ConsumerWidget {
                           final spkUserId = speaker['userId']?.toString() ?? '';
                           final isSpkHost = speaker['role'] == 'host' || spkUserId == room['hostId']?.toString();
                           final isSpkSubHost = speaker['role'] == 'subhost' || spkUserId == room['subHostId']?.toString();
-                          final isMuted = speaker['isMuted'] == true;
                           final isSelf = spkUserId == currentUserId;
+                          final isMuted = isSelf ? roomState.isMuted : (speaker['isMuted'] == true);
 
                           return GestureDetector(
                             onTap: () {
-                              if (isHostOrSubHost && !isSelf) {
+                              if (isSelf) {
+                                ref.read(roomsControllerProvider.notifier).toggleMic();
+                              } else if (isHostOrSubHost) {
                                 _showSpeakerModerationSheet(context, ref, speaker, isHost);
                               }
                             },
@@ -327,7 +329,7 @@ class LiveVoiceRoomScreen extends ConsumerWidget {
                                     ),
                                   ],
                                 ),
-                                const SizedBox(height: 8),
+                                const SizedBox(height: 6),
                                 Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
@@ -354,7 +356,7 @@ class LiveVoiceRoomScreen extends ConsumerWidget {
                                     ],
                                     Flexible(
                                       child: Text(
-                                        (speaker['name'] ?? 'Speaker').toString().split(' ').first,
+                                        isSelf ? 'You' : (speaker['name'] ?? 'Speaker').toString().split(' ').first,
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13),
@@ -362,6 +364,16 @@ class LiveVoiceRoomScreen extends ConsumerWidget {
                                     ),
                                   ],
                                 ),
+                                if (isSelf) ...[
+                                  Text(
+                                    isMuted ? 'Muted (Tap)' : 'Mic On (Tap)',
+                                    style: TextStyle(
+                                      color: isMuted ? AppColors.error : AppColors.primaryAccentLight,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
                               ],
                             ),
                           );
@@ -500,20 +512,21 @@ class LiveVoiceRoomScreen extends ConsumerWidget {
 
                     // Raise Hand or Mic Toggle
                     if (isSpeakerOrHost) ...[
-                      GestureDetector(
-                        onTap: () => ref.read(roomsControllerProvider.notifier).toggleMic(),
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: roomState.isMuted ? AppColors.cardBackground : AppColors.primaryAccent,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: AppColors.glassBorder),
-                          ),
-                          child: Icon(
-                            roomState.isMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
-                            color: Colors.white,
-                            size: 24,
-                          ),
+                      ElevatedButton.icon(
+                        onPressed: () => ref.read(roomsControllerProvider.notifier).toggleMic(),
+                        icon: Icon(
+                          roomState.isMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
+                          size: 18,
+                          color: Colors.white,
+                        ),
+                        label: Text(
+                          roomState.isMuted ? 'Unmute Mic' : 'Mute Mic',
+                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: roomState.isMuted ? AppColors.error : AppColors.primaryAccent,
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                         ),
                       ),
                     ] else ...[

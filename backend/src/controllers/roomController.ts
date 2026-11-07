@@ -517,16 +517,17 @@ export class RoomController {
         return;
       }
 
+      const isSelf = String(callerId) === String(targetUserId);
       const isHost = String(room.hostId) === String(callerId) || callerId === 'admin';
       const isSubHost = String(room.subHostId) === String(callerId);
 
-      if (!isHost && !isSubHost) {
-        res.status(403).json({ success: false, error: { message: 'Only host or sub-host can mute speakers' } });
+      if (!isSelf && !isHost && !isSubHost) {
+        res.status(403).json({ success: false, error: { message: 'Only host, sub-host, or speaker themselves can toggle mute' } });
         return;
       }
 
       // Sub-host cannot mute the main host
-      if (!isHost && String(room.hostId) === String(targetUserId)) {
+      if (!isSelf && !isHost && String(room.hostId) === String(targetUserId)) {
         res.status(403).json({ success: false, error: { message: 'Cannot mute the host' } });
         return;
       }
@@ -539,11 +540,13 @@ export class RoomController {
 
       const io = getSocketIo();
       if (io) {
-        io.to(`user:${targetUserId}`).emit('speaker_muted', {
-          roomId: id,
-          isMuted: speaker ? speaker.isMuted : true,
-          byHost: true
-        });
+        if (!isSelf) {
+          io.to(`user:${targetUserId}`).emit('speaker_muted', {
+            roomId: id,
+            isMuted: speaker ? speaker.isMuted : true,
+            byHost: true
+          });
+        }
         io.to(`room:${id}`).emit('speaker_list_updated', {
           speakers: room.speakers
         });
