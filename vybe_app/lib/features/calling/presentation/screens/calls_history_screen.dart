@@ -48,8 +48,21 @@ class _CallsHistoryScreenState extends ConsumerState<CallsHistoryScreen> {
       }
 
       if (res is List && mounted) {
+        final myId = auth.user?['id']?.toString().toLowerCase();
+        // Client-side guard: strictly ensure only calls where this user was a participant are shown
+        final filtered = res.where((item) {
+          if (item is! Map) return false;
+          final uId = item['userId']?.toString().toLowerCase();
+          if (uId != null && myId != null) {
+            return uId == myId;
+          }
+          final cId = item['callerId']?.toString().toLowerCase();
+          final rId = item['receiverId']?.toString().toLowerCase();
+          return (cId != null && cId == myId) || (rId != null && rId == myId);
+        }).toList();
+
         setState(() {
-          _history = res;
+          _history = filtered;
           _followedIds = followed;
           _isLoading = false;
         });
@@ -123,135 +136,173 @@ class _CallsHistoryScreenState extends ConsumerState<CallsHistoryScreen> {
     return '${m}m ${s}s';
   }
 
+  String _formatTimestamp(dynamic raw) {
+    if (raw == null) return 'Recent';
+    try {
+      final dt = DateTime.parse(raw.toString()).toLocal();
+      final now = DateTime.now();
+      final diff = now.difference(dt);
+      if (diff.inMinutes < 1) return 'Just now';
+      if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+      if (diff.inHours < 24 && dt.day == now.day) {
+        final h = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+        final m = dt.minute.toString().padLeft(2, '0');
+        final ampm = dt.hour >= 12 ? 'PM' : 'AM';
+        return 'Today $h:$m $ampm';
+      }
+      if (diff.inDays < 7) {
+        final weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        return weekdays[dt.weekday - 1];
+      }
+      return '${dt.day}/${dt.month}/${dt.year}';
+    } catch (_) {
+      return 'Recent';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final myId = ref.read(authControllerProvider).user?['id'];
+    final myId = ref.read(authControllerProvider).user?['id']?.toString().toLowerCase();
 
     return Scaffold(
       backgroundColor: AppColors.primaryBackground,
       appBar: AppBar(
         title: const Text('Call History', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 20)),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: AppColors.primaryAccent))
-          : _history.isEmpty
-              ? _buildEmptyState()
-              : ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                  itemCount: _history.length,
-                  itemBuilder: (context, index) {
-                    final item = _history[index];
-                    final isMissed = item['status'] == 'missed';
-                    final isIncoming = item['direction'] == 'incoming';
-                    final friendId = isIncoming ? item['callerId'] : item['receiverId'];
-                    final friendName = isIncoming ? (item['callerName'] ?? 'Caller') : (item['receiverName'] ?? 'User');
-                    final isFollowed = _followedIds.contains(friendId);
-                    final isSelf = friendId == myId;
+      body: RefreshIndicator(
+        onRefresh: _fetchHistory,
+        color: AppColors.primaryAccent,
+        backgroundColor: AppColors.secondaryBackground,
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator(color: AppColors.primaryAccent))
+            : _history.isEmpty
+                ? _buildEmptyState()
+                : ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    itemCount: _history.length,
+                    itemBuilder: (context, index) {
+                      final item = _history[index];
+                      final isMissed = item['status'] == 'missed' || item['status'] == 'rejected';
+                      final isIncoming = item['direction'] == 'incoming' ||
+                          (item['receiverId'] != null &&
+                              item['receiverId']?.toString().toLowerCase() == myId);
 
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      child: GlassContainer(
-                        padding: const EdgeInsets.all(14),
-                        onTap: () {
-                          if (friendId != null && !isSelf) {
-                            context.push('/profile/$friendId');
-                          }
-                        },
-                        child: Row(
-                          children: [
-                            CircleAvatar(
-                              radius: 24,
-                              backgroundImage: NetworkImage(
-                                item['avatarUrl'] ?? 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=500',
+                      // Determine the other participant (friend/peer)
+                      final friendId = item['peerId']?.toString() ??
+                          (isIncoming ? item['callerId']?.toString() : item['receiverId']?.toString());
+                      final friendName = item['peerName']?.toString() ??
+                          (isIncoming ? (item['callerName'] ?? 'Caller') : (item['receiverName'] ?? 'User'));
+                      final friendAvatar = item['peerAvatar']?.toString() ??
+                          item['avatarUrl']?.toString() ??
+                          (isIncoming ? item['callerAvatar']?.toString() : item['receiverAvatar']?.toString()) ??
+                          'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=500';
+
+                      final isFollowed = friendId != null && _followedIds.contains(friendId);
+                      final isSelf = friendId != null && myId != null && friendId.toLowerCase() == myId;
+
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        child: GlassContainer(
+                          padding: const EdgeInsets.all(14),
+                          onTap: () {
+                            if (friendId != null && !isSelf) {
+                              context.push('/profile/$friendId');
+                            }
+                          },
+                          child: Row(
+                            children: [
+                              CircleAvatar(
+                                radius: 24,
+                                backgroundImage: NetworkImage(friendAvatar),
                               ),
-                            ),
-                            const SizedBox(width: 14),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    friendName,
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      friendName,
+                                      style: TextStyle(
+                                        color: isMissed ? AppColors.error : Colors.white,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 15,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Row(
+                                      children: [
+                                        Icon(
+                                          isMissed
+                                              ? Icons.call_missed_rounded
+                                              : (isIncoming ? Icons.call_received_rounded : Icons.call_made_rounded),
+                                          size: 14,
+                                          color: isMissed ? AppColors.error : AppColors.primaryAccent,
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          '${_formatTimestamp(item['createdAt'])} • ${_formatDuration(item['duration'] ?? 0)}',
+                                          style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                              // Follow Called Friend Button
+                              if (!isSelf && friendId != null) ...[
+                                OutlinedButton.icon(
+                                  onPressed: () => _toggleFollow(friendId, friendName),
+                                  icon: Icon(
+                                    isFollowed ? Icons.check_rounded : Icons.person_add_rounded,
+                                    size: 13,
+                                    color: isFollowed ? AppColors.textSecondary : AppColors.primaryAccent,
+                                  ),
+                                  label: Text(
+                                    isFollowed ? 'Following' : 'Follow',
                                     style: TextStyle(
-                                      color: isMissed ? AppColors.error : Colors.white,
+                                      color: isFollowed ? AppColors.textSecondary : AppColors.primaryAccentLight,
+                                      fontSize: 11,
                                       fontWeight: FontWeight.w700,
-                                      fontSize: 15,
                                     ),
                                   ),
-                                  const SizedBox(height: 4),
-                                  Row(
-                                    children: [
-                                      Icon(
-                                        isMissed
-                                            ? Icons.call_missed_rounded
-                                            : (isIncoming ? Icons.call_received_rounded : Icons.call_made_rounded),
-                                        size: 14,
-                                        color: isMissed ? AppColors.error : AppColors.primaryAccent,
-                                      ),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        '${item['createdAt'] ?? 'Recent'} • ${_formatDuration(item['duration'] ?? 0)}',
-                                        style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
-                                      ),
-                                    ],
+                                  style: OutlinedButton.styleFrom(
+                                    backgroundColor: isFollowed ? Colors.transparent : AppColors.primaryAccent.withOpacity(0.12),
+                                    side: BorderSide(
+                                      color: isFollowed ? AppColors.glassBorder : AppColors.primaryAccent,
+                                      width: 1,
+                                    ),
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                    minimumSize: Size.zero,
+                                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                                   ),
-                                ],
-                              ),
-                            ),
+                                ),
+                                const SizedBox(width: 6),
+                              ],
 
-                            // Follow Called Friend Button
-                            if (!isSelf && friendId != null) ...[
-                              OutlinedButton.icon(
-                                onPressed: () => _toggleFollow(friendId, friendName),
-                                icon: Icon(
-                                  isFollowed ? Icons.check_rounded : Icons.person_add_rounded,
-                                  size: 13,
-                                  color: isFollowed ? AppColors.textSecondary : AppColors.primaryAccent,
-                                ),
-                                label: Text(
-                                  isFollowed ? 'Following' : 'Follow',
-                                  style: TextStyle(
-                                    color: isFollowed ? AppColors.textSecondary : AppColors.primaryAccentLight,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                style: OutlinedButton.styleFrom(
-                                  backgroundColor: isFollowed ? Colors.transparent : AppColors.primaryAccent.withOpacity(0.12),
-                                  side: BorderSide(
-                                    color: isFollowed ? AppColors.glassBorder : AppColors.primaryAccent,
-                                    width: 1,
-                                  ),
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                  minimumSize: Size.zero,
-                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                                ),
+                              // Call Back Button
+                              IconButton(
+                                icon: const Icon(Icons.phone_in_talk_rounded, color: AppColors.primaryAccent),
+                                onPressed: () {
+                                  if (friendId == null || isSelf) return;
+                                  ref.read(callingControllerProvider.notifier).startCall(
+                                        receiverId: friendId,
+                                        receiverProfile: {
+                                          'displayName': friendName,
+                                          'avatarUrl': friendAvatar,
+                                        },
+                                      );
+                                  context.push('/calling');
+                                },
                               ),
-                              const SizedBox(width: 6),
                             ],
-
-                            // Call Back Button
-                            IconButton(
-                              icon: const Icon(Icons.phone_in_talk_rounded, color: AppColors.primaryAccent),
-                              onPressed: () {
-                                final targetId = item['receiverId'] ?? item['callerId'] ?? '';
-                                ref.read(callingControllerProvider.notifier).startCall(
-                                      receiverId: targetId,
-                                      receiverProfile: {
-                                        'displayName': friendName,
-                                        'avatarUrl': item['avatarUrl'],
-                                      },
-                                    );
-                                context.push('/calling');
-                              },
-                            ),
-                          ],
+                          ),
                         ),
-                      ),
-                    );
-                  },
-                ),
+                      );
+                    },
+                  ),
+      ),
     );
   }
 

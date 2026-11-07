@@ -44,7 +44,8 @@ export class LocalDbStore {
         favourites: Array.from(this.favourites),
         notifications: this.notifications,
         wallets: Array.from(this.wallets.entries()),
-        userBlocks: Array.from(this.userBlocks)
+        userBlocks: Array.from(this.userBlocks),
+        callHistory: this.callHistory.slice(0, 200)
       };
       fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), 'utf-8');
     } catch (e: any) {
@@ -81,7 +82,10 @@ export class LocalDbStore {
           this.userBlocks.add(item);
         }
       }
-      console.log(`[LocalDbStore] Restored ${this.follows.size} follow(s) and ${this.notifications.length} notification(s) from disk.`);
+      if (Array.isArray(data.callHistory)) {
+        this.callHistory = data.callHistory;
+      }
+      console.log(`[LocalDbStore] Restored ${this.follows.size} follow(s), ${this.notifications.length} notification(s), and ${this.callHistory.length} call history record(s) from disk.`);
     } catch (e: any) {
       console.warn('[LocalDbStore] Error loading from disk:', e.message);
     }
