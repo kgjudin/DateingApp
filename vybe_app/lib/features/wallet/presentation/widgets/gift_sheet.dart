@@ -9,12 +9,14 @@ class GiftBottomSheet extends ConsumerStatefulWidget {
   final String receiverId;
   final String receiverName;
   final String? roomId;
+  final void Function(Map<String, dynamic> giftData)? onGiftSent;
 
   const GiftBottomSheet({
     super.key,
     required this.receiverId,
     required this.receiverName,
     this.roomId,
+    this.onGiftSent,
   });
 
   @override
@@ -83,7 +85,24 @@ class _GiftBottomSheetState extends ConsumerState<GiftBottomSheet> {
         ref.read(authControllerProvider.notifier).updateCoinBalance(currentCoins - (selectedGift['price'] as int));
       }
 
+      final user = ref.read(authControllerProvider).user;
+      final myId = user?['id']?.toString() ?? '';
+      final myName = user?['displayName']?.toString() ?? user?['username']?.toString() ?? 'You';
+
+      final giftPayload = {
+        'giftId': selectedGift['id'],
+        'giftName': selectedGift['name'],
+        'emoji': selectedGift['emoji'],
+        'coinAmount': selectedGift['price'],
+        'senderId': myId,
+        'senderName': myName,
+        'receiverId': widget.receiverId,
+        'receiverName': widget.receiverName,
+        'isSender': true,
+      };
+
       if (mounted) {
+        widget.onGiftSent?.call(giftPayload);
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -92,7 +111,7 @@ class _GiftBottomSheetState extends ConsumerState<GiftBottomSheet> {
               children: [
                 Text(selectedGift['emoji'] as String, style: const TextStyle(fontSize: 20)),
                 const SizedBox(width: 10),
-                Text('Sent ${selectedGift['name']} to ${widget.receiverName}!'),
+                Text('Sent ${selectedGift['name']} to ${widget.receiverName}! 🎁'),
               ],
             ),
           ),
@@ -101,12 +120,29 @@ class _GiftBottomSheetState extends ConsumerState<GiftBottomSheet> {
     } catch (e) {
       // Offline fallback deduction for testing
       ref.read(authControllerProvider.notifier).updateCoinBalance(currentCoins - (selectedGift['price'] as int));
+      final user = ref.read(authControllerProvider).user;
+      final myId = user?['id']?.toString() ?? '';
+      final myName = user?['displayName']?.toString() ?? user?['username']?.toString() ?? 'You';
+
+      final giftPayload = {
+        'giftId': selectedGift['id'],
+        'giftName': selectedGift['name'],
+        'emoji': selectedGift['emoji'],
+        'coinAmount': selectedGift['price'],
+        'senderId': myId,
+        'senderName': myName,
+        'receiverId': widget.receiverId,
+        'receiverName': widget.receiverName,
+        'isSender': true,
+      };
+
       if (mounted) {
+        widget.onGiftSent?.call(giftPayload);
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             backgroundColor: AppColors.cardBackground,
-            content: Text('Sent ${selectedGift['name']} to ${widget.receiverName}!'),
+            content: Text('Sent ${selectedGift['name']} to ${widget.receiverName}! 🎁'),
           ),
         );
       }

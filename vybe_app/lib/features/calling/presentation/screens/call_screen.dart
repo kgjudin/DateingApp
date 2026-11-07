@@ -10,6 +10,7 @@ import '../../../../core/widgets/voice_waveform_widget.dart';
 import '../../../auth/presentation/auth_controller.dart';
 import '../../../wallet/presentation/widgets/gift_sheet.dart';
 import '../calling_controller.dart';
+import '../widgets/celebration_gift_popup.dart';
 
 class CallScreen extends ConsumerStatefulWidget {
   const CallScreen({super.key});
@@ -52,30 +53,49 @@ class _CallScreenState extends ConsumerState<CallScreen> {
     final socket = ref.read(socketServiceProvider);
     _giftSub = socket.onGiftReceived.listen((data) {
       if (!mounted) return;
-      final myId = ref.read(authControllerProvider).user?['id'];
-      final receiverId = data['receiverId'];
+      final myId = ref.read(authControllerProvider).user?['id']?.toString().toLowerCase();
+      final receiverId = data['receiverId']?.toString().toLowerCase();
+      final senderId = data['senderId']?.toString().toLowerCase();
 
-      if (receiverId != null && myId != null && receiverId != myId) return;
+      final isMeReceiver = receiverId != null && myId != null && receiverId == myId;
+      final isMeSender = (senderId != null && myId != null && senderId == myId) || data['isSender'] == true;
+
+      // Only show gifts relevant to this user
+      if (!isMeReceiver && !isMeSender) return;
 
       // Update local wallet coin balance
-      if (data['receiverNewBalance'] != null) {
-        ref.read(authControllerProvider.notifier).updateCoinBalance(data['receiverNewBalance'] as int);
-      } else {
-        final current = ref.read(authControllerProvider).coinBalance;
-        final delta = (data['coinAmount'] as int?) ?? 0;
-        ref.read(authControllerProvider.notifier).updateCoinBalance(current + delta);
+      if (isMeReceiver) {
+        if (data['receiverNewBalance'] != null) {
+          ref.read(authControllerProvider.notifier).updateCoinBalance(data['receiverNewBalance'] as int);
+        } else {
+          final current = ref.read(authControllerProvider).coinBalance;
+          final delta = (data['coinAmount'] as int?) ?? 0;
+          ref.read(authControllerProvider.notifier).updateCoinBalance(current + delta);
+        }
+      } else if (isMeSender) {
+        if (data['senderNewBalance'] != null) {
+          ref.read(authControllerProvider.notifier).updateCoinBalance(data['senderNewBalance'] as int);
+        }
       }
 
-      setState(() {
-        _activeReceivedGift = data;
+      _triggerGiftAnimation({
+        ...data,
+        'isSender': isMeSender,
       });
+    });
+  }
 
-      _giftDismissTimer?.cancel();
-      _giftDismissTimer = Timer(const Duration(seconds: 6), () {
-        if (mounted) {
-          setState(() => _activeReceivedGift = null);
-        }
-      });
+  void _triggerGiftAnimation(Map<String, dynamic> giftData) {
+    if (!mounted) return;
+    setState(() {
+      _activeReceivedGift = giftData;
+    });
+
+    _giftDismissTimer?.cancel();
+    _giftDismissTimer = Timer(const Duration(seconds: 5), () {
+      if (mounted) {
+        setState(() => _activeReceivedGift = null);
+      }
     });
   }
 
@@ -545,6 +565,9 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                               builder: (ctx) => GiftBottomSheet(
                                 receiverId: peerId,
                                 receiverName: peerName,
+                                onGiftSent: (giftData) {
+                                  _triggerGiftAnimation(giftData);
+                                },
                               ),
                             );
                           },
@@ -580,89 +603,14 @@ class _CallScreenState extends ConsumerState<CallScreen> {
             ),
           ),
 
-          // Celebratory In-Call Gift Notification Overlay
+          // Celebratory In-Call Gift Animation Popup
           if (_activeReceivedGift != null)
-            Positioned(
-              top: 75,
-              left: 20,
-              right: 20,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [
-                      Color(0xFF2A1B4E),
-                      AppColors.secondaryBackground,
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(color: const Color(0xFFFFD700), width: 2),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFFFFD700).withOpacity(0.35),
-                      blurRadius: 20,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFFD700).withOpacity(0.2),
-                        shape: BoxShape.circle,
-                        border: Border.all(color: const Color(0xFFFFD700), width: 1.5),
-                      ),
-                      child: Text(
-                        _activeReceivedGift!['emoji'] ?? '🎁',
-                        style: const TextStyle(fontSize: 28),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Row(
-                            children: [
-                              Text(
-                                '${_activeReceivedGift!['senderName'] ?? 'Friend'} gifted you!',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 14,
-                                ),
-                              ),
-                              const SizedBox(width: 4),
-                              const Text('✨', style: TextStyle(fontSize: 13)),
-                            ],
-                          ),
-                          const SizedBox(height: 3),
-                          Text(
-                            '${_activeReceivedGift!['giftName']} • +${_activeReceivedGift!['coinAmount'] ?? 0} Coins!',
-                            style: const TextStyle(
-                              color: Color(0xFFFFD700),
-                              fontWeight: FontWeight.w900,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close_rounded, color: Colors.white70, size: 18),
-                      onPressed: () {
-                        setState(() => _activeReceivedGift = null);
-                      },
-                    ),
-                  ],
-                ),
-              ),
+            CelebrationGiftPopup(
+              giftData: _activeReceivedGift!,
+              onDismiss: () {
+                _giftDismissTimer?.cancel();
+                setState(() => _activeReceivedGift = null);
+              },
             ),
         ],
       ),

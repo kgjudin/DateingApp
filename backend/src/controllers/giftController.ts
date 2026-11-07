@@ -1,7 +1,7 @@
 import { Response } from 'express';
 import { AuthenticatedRequest } from '../middleware/authMiddleware';
 import { LocalDbStore } from '../integrations/supabase/supabaseClient';
-import { getSocketIo } from '../sockets/socketHandler';
+import { getSocketIo, cleanUserId } from '../sockets/socketHandler';
 
 export class GiftController {
   public static async getGiftCatalogue(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -152,16 +152,37 @@ export class GiftController {
           receiverNewBalance: receiverWallet.balance
         };
 
+        const rTarget = cleanUserId(receiverId);
+        const sTarget = cleanUserId(senderId);
+
         // 1. Direct delivery to receiver's user channel
-        io.to(`user:${receiverId}`).emit('gift_received', giftPayload);
-        io.to(`user:${receiverId}`).emit('live_gift_animation', giftPayload);
-        io.to(`user:${receiverId}`).emit('wallet_updated', {
+        io.to(`user:${rTarget}`).emit('gift_received', giftPayload);
+        io.to(`user:${rTarget}`).emit('live_gift_animation', giftPayload);
+        io.to(`user:${rTarget}`).emit('wallet_updated', {
           balance: receiverWallet.balance,
           earned: receiverWallet.earned,
           delta: gift.coinPrice,
           transaction: giftTx
         });
-        io.to(`user:${receiverId}`).emit('notification_received', notifData);
+        io.to(`user:${rTarget}`).emit('notification_received', notifData);
+
+        // Direct delivery to sender's user channel so sender also receives the live animation
+        io.to(`user:${sTarget}`).emit('gift_received', {
+          ...giftPayload,
+          isSender: true,
+          senderNewBalance: senderWallet.balance
+        });
+        io.to(`user:${sTarget}`).emit('live_gift_animation', {
+          ...giftPayload,
+          isSender: true,
+          senderNewBalance: senderWallet.balance
+        });
+        io.to(`user:${sTarget}`).emit('wallet_updated', {
+          balance: senderWallet.balance,
+          spent: senderWallet.spent,
+          delta: -gift.coinPrice,
+          transaction: giftTx
+        });
 
         // 2. Broadcast live gift animation to group room if sent in a room
         if (roomId) {
