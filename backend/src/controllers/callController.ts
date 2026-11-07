@@ -2,7 +2,7 @@ import { Response } from 'express';
 import { AuthenticatedRequest } from '../middleware/authMiddleware';
 import { LocalDbStore, getSupabase, buildProfileFromSupabaseUser } from '../integrations/supabase/supabaseClient';
 import { AgoraService } from '../integrations/agora/agoraService';
-import { getSocketIo } from '../sockets/socketHandler';
+import { getSocketIo, isUserOnline, getUserPresence } from '../sockets/socketHandler';
 
 export class CallController {
   public static async initiateCall(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -242,8 +242,10 @@ export class CallController {
         LocalDbStore.calls.set(callId, call);
 
         // Reset presence
-        LocalDbStore.presence.set(call.callerId, { userId: call.callerId, status: 'online', lastSeenAt: new Date().toISOString() });
-        LocalDbStore.presence.set(call.receiverId, { userId: call.receiverId, status: 'online', lastSeenAt: new Date().toISOString() });
+        const callerStatus = isUserOnline(call.callerId) ? 'online' : 'offline';
+        const receiverStatus = isUserOnline(call.receiverId) ? 'online' : 'offline';
+        LocalDbStore.presence.set(call.callerId, { userId: call.callerId, status: callerStatus, lastSeenAt: new Date().toISOString() });
+        LocalDbStore.presence.set(call.receiverId, { userId: call.receiverId, status: receiverStatus, lastSeenAt: new Date().toISOString() });
 
         // Record history
         LocalDbStore.callHistory.unshift({
@@ -282,8 +284,10 @@ export class CallController {
         LocalDbStore.calls.set(callId, call);
 
         // Reset presence
-        LocalDbStore.presence.set(call.callerId, { userId: call.callerId, status: 'online', lastSeenAt: new Date().toISOString() });
-        LocalDbStore.presence.set(call.receiverId, { userId: call.receiverId, status: 'online', lastSeenAt: new Date().toISOString() });
+        const callerStatus = isUserOnline(call.callerId) ? 'online' : 'offline';
+        const receiverStatus = isUserOnline(call.receiverId) ? 'online' : 'offline';
+        LocalDbStore.presence.set(call.callerId, { userId: call.callerId, status: callerStatus, lastSeenAt: new Date().toISOString() });
+        LocalDbStore.presence.set(call.receiverId, { userId: call.receiverId, status: receiverStatus, lastSeenAt: new Date().toISOString() });
 
         // Record history
         LocalDbStore.callHistory.unshift({
@@ -374,10 +378,11 @@ export class CallController {
         if (uId === userId) {
           const profile = LocalDbStore.profiles.get(favId);
           if (profile) {
-            const presence = LocalDbStore.presence.get(favId) || { status: 'offline' };
+            const presenceInfo = getUserPresence(favId);
             favList.push({
               ...profile,
-              status: presence.status,
+              status: presenceInfo.status,
+              isOnline: presenceInfo.isOnline,
               isFavourite: true
             });
           }

@@ -1,25 +1,77 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/glass_container.dart';
 import '../../../../core/widgets/online_badge.dart';
 import '../../../auth/presentation/auth_controller.dart';
+import '../widgets/follow_users_sheet.dart';
 
-class ProfileScreen extends ConsumerWidget {
+class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends ConsumerState<ProfileScreen> {
+  Map<String, dynamic>? _liveProfile;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshProfile();
+  }
+
+  Future<void> _refreshProfile() async {
+    try {
+      final res = await ref.read(apiClientProvider).get('/auth/me');
+      if (res is Map && res['user'] != null && mounted) {
+        setState(() {
+          _liveProfile = Map<String, dynamic>.from(res['user']);
+        });
+      }
+    } catch (_) {}
+  }
+
+  void _openFollowSheet(String title, bool isFollowers, String userId) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => FollowUsersSheet(
+        title: title,
+        userId: userId,
+        isFollowers: isFollowers,
+      ),
+    ).then((_) => _refreshProfile());
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final authState = ref.watch(authControllerProvider);
-    final user = authState.user ?? {};
+    final user = _liveProfile ?? (authState.user ?? {});
     final interests = (user['interests'] as List?) ?? ['Music', 'Travelling', 'Art', 'Lifestyle'];
+    final userId = user['id'] ?? '';
+    final followersCount = user['followersCount'] ?? 0;
+    final followingCount = user['followingCount'] ?? 0;
 
     return Scaffold(
       backgroundColor: AppColors.primaryBackground,
       appBar: AppBar(
         title: const Text('My Profile', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 20)),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.notifications_outlined, color: Colors.white),
+            tooltip: 'Notifications',
+            onPressed: () => context.push('/notifications'),
+          ),
+          IconButton(
+            icon: const Icon(Icons.account_balance_wallet_outlined, color: Colors.white),
+            tooltip: 'Wallet & Gifts',
+            onPressed: () => context.push('/wallet'),
+          ),
           IconButton(
             icon: const Icon(Icons.settings_outlined, color: Colors.white),
             onPressed: () => _showSettingsModal(context, ref),
@@ -155,14 +207,42 @@ class ProfileScreen extends ConsumerWidget {
 
                   const SizedBox(height: 24),
 
-                  // STATS BAR
+                  // STATS BAR: FOLLOWERS & FOLLOWING
                   Row(
                     children: [
-                      Expanded(child: _buildStatCard('${user['callsCount'] ?? 0}', 'Voice Calls')),
+                      Expanded(
+                        child: _buildStatCard(
+                          '$followersCount',
+                          'Followers',
+                          onTap: () => _openFollowSheet('Followers', true, userId),
+                          icon: Icons.people_rounded,
+                        ),
+                      ),
                       const SizedBox(width: 12),
-                      Expanded(child: _buildStatCard('${user['roomsHostedCount'] ?? 0}', 'Stages Hosted')),
+                      Expanded(
+                        child: _buildStatCard(
+                          '$followingCount',
+                          'Following',
+                          onTap: () => _openFollowSheet('Following', false, userId),
+                          icon: Icons.person_add_alt_1_rounded,
+                        ),
+                      ),
                       const SizedBox(width: 12),
-                      Expanded(child: _buildStatCard('🪙 ${authState.coinBalance}', 'Balance')),
+                      Expanded(
+                        child: _buildStatCard(
+                          '${user['callsCount'] ?? 0}',
+                          'Calls',
+                          icon: Icons.phone_in_talk_rounded,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildStatCard(
+                          '🪙 ${authState.coinBalance}',
+                          'Coins',
+                          onTap: () => context.push('/wallet'),
+                        ),
+                      ),
                     ],
                   ),
 
@@ -198,15 +278,32 @@ class ProfileScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildStatCard(String val, String label) {
-    return GlassContainer(
-      padding: const EdgeInsets.all(14),
-      child: Column(
-        children: [
-          Text(val, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 17)),
-          const SizedBox(height: 2),
-          Text(label, style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
-        ],
+  Widget _buildStatCard(String val, String label, {VoidCallback? onTap, IconData? icon}) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: GlassContainer(
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+        child: Column(
+          children: [
+            if (icon != null) ...[
+              Icon(icon, color: AppColors.primaryAccentLight, size: 16),
+              const SizedBox(height: 4),
+            ],
+            Text(val, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 16)),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: TextStyle(
+                color: onTap != null ? AppColors.secondaryAccent : AppColors.textSecondary,
+                fontSize: 10,
+                fontWeight: onTap != null ? FontWeight.w600 : FontWeight.normal,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -221,38 +318,30 @@ class ProfileScreen extends ConsumerWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Privacy & Settings', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 20)),
+            const Text('Account & Privacy Settings', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)),
             const SizedBox(height: 20),
             SwitchListTile(
               title: const Text('Discoverability on Voice Radar', style: TextStyle(color: Colors.white)),
               subtitle: const Text('Allow online users to discover you', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
               value: true,
               activeColor: AppColors.primaryAccent,
-              onChanged: (_) {},
+              onChanged: (val) {},
             ),
             SwitchListTile(
               title: const Text('Show Online Status', style: TextStyle(color: Colors.white)),
               subtitle: const Text('Display emerald active indicator', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
               value: true,
               activeColor: AppColors.primaryAccent,
-              onChanged: (_) {},
+              onChanged: (val) {},
             ),
-            const Divider(color: AppColors.glassBorder),
-            ListTile(
-              leading: const Icon(Icons.account_balance_wallet_rounded, color: AppColors.primaryAccent),
-              title: const Text('Coin Wallet & Transactions', style: TextStyle(color: Colors.white)),
-              onTap: () {
-                Navigator.pop(ctx);
-                context.push('/wallet');
-              },
-            ),
+            const SizedBox(height: 24),
             ListTile(
               leading: const Icon(Icons.logout_rounded, color: AppColors.error),
-              title: const Text('Sign Out', style: TextStyle(color: AppColors.error, fontWeight: FontWeight.w700)),
-              onTap: () async {
+              title: const Text('Log Out', style: TextStyle(color: AppColors.error, fontWeight: FontWeight.w700)),
+              onTap: () {
                 Navigator.pop(ctx);
-                await ref.read(authControllerProvider.notifier).logout();
-                if (context.mounted) context.go('/login');
+                ref.read(authControllerProvider.notifier).logout();
+                context.go('/login');
               },
             ),
           ],

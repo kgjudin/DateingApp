@@ -16,6 +16,7 @@ class CallsHistoryScreen extends ConsumerStatefulWidget {
 
 class _CallsHistoryScreenState extends ConsumerState<CallsHistoryScreen> {
   List<dynamic> _history = [];
+  Set<String> _followedIds = {};
   bool _isLoading = true;
 
   @override
@@ -35,20 +36,84 @@ class _CallsHistoryScreenState extends ConsumerState<CallsHistoryScreen> {
     }
     try {
       final res = await ref.read(apiClientProvider).get('/calls/history');
-      if (res is List) {
+      final followingRes = await ref.read(apiClientProvider).get('/follow/following');
+
+      final followed = <String>{};
+      if (followingRes is List) {
+        for (final item in followingRes) {
+          if (item is Map && item['id'] != null) {
+            followed.add(item['id'].toString());
+          }
+        }
+      }
+
+      if (res is List && mounted) {
         setState(() {
           _history = res;
+          _followedIds = followed;
           _isLoading = false;
         });
         return;
       }
     } catch (_) {}
 
-    // No mock fallback: maintain real state
+    if (mounted) {
+      setState(() {
+        _history = [];
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _toggleFollow(String targetUserId, String friendName) async {
+    final isCurrentlyFollowed = _followedIds.contains(targetUserId);
     setState(() {
-      _history = [];
-      _isLoading = false;
+      if (isCurrentlyFollowed) {
+        _followedIds.remove(targetUserId);
+      } else {
+        _followedIds.add(targetUserId);
+      }
     });
+
+    try {
+      final res = await ref.read(apiClientProvider).post('/follow/toggle', body: {
+        'targetUserId': targetUserId,
+      });
+
+      if (res is Map && mounted) {
+        final isFollowing = res['isFollowing'] == true;
+        setState(() {
+          if (isFollowing) {
+            _followedIds.add(targetUserId);
+          } else {
+            _followedIds.remove(targetUserId);
+          }
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: AppColors.cardBackground,
+            content: Text(
+              isFollowing
+                  ? 'Followed $friendName! They received a notification.'
+                  : 'Unfollowed $friendName.',
+              style: const TextStyle(color: Colors.white),
+            ),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          if (isCurrentlyFollowed) {
+            _followedIds.add(targetUserId);
+          } else {
+            _followedIds.remove(targetUserId);
+          }
+        });
+      }
+    }
   }
 
   String _formatDuration(int seconds) {
@@ -60,6 +125,8 @@ class _CallsHistoryScreenState extends ConsumerState<CallsHistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final myId = ref.read(authControllerProvider).user?['id'];
+
     return Scaffold(
       backgroundColor: AppColors.primaryBackground,
       appBar: AppBar(
@@ -76,11 +143,20 @@ class _CallsHistoryScreenState extends ConsumerState<CallsHistoryScreen> {
                     final item = _history[index];
                     final isMissed = item['status'] == 'missed';
                     final isIncoming = item['direction'] == 'incoming';
+                    final friendId = isIncoming ? item['callerId'] : item['receiverId'];
+                    final friendName = isIncoming ? (item['callerName'] ?? 'Caller') : (item['receiverName'] ?? 'User');
+                    final isFollowed = _followedIds.contains(friendId);
+                    final isSelf = friendId == myId;
 
                     return Container(
                       margin: const EdgeInsets.only(bottom: 12),
                       child: GlassContainer(
                         padding: const EdgeInsets.all(14),
+                        onTap: () {
+                          if (friendId != null && !isSelf) {
+                            context.push('/profile/$friendId');
+                          }
+                        },
                         child: Row(
                           children: [
                             CircleAvatar(
@@ -95,7 +171,7 @@ class _CallsHistoryScreenState extends ConsumerState<CallsHistoryScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    isIncoming ? (item['callerName'] ?? 'Caller') : (item['receiverName'] ?? 'User'),
+                                    friendName,
                                     style: TextStyle(
                                       color: isMissed ? AppColors.error : Colors.white,
                                       fontWeight: FontWeight.w700,
@@ -122,6 +198,40 @@ class _CallsHistoryScreenState extends ConsumerState<CallsHistoryScreen> {
                                 ],
                               ),
                             ),
+
+                            // Follow Called Friend Button
+                            if (!isSelf && friendId != null) ...[
+                              OutlinedButton.icon(
+                                onPressed: () => _toggleFollow(friendId, friendName),
+                                icon: Icon(
+                                  isFollowed ? Icons.check_rounded : Icons.person_add_rounded,
+                                  size: 13,
+                                  color: isFollowed ? AppColors.textSecondary : AppColors.primaryAccent,
+                                ),
+                                label: Text(
+                                  isFollowed ? 'Following' : 'Follow',
+                                  style: TextStyle(
+                                    color: isFollowed ? AppColors.textSecondary : AppColors.primaryAccentLight,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                style: OutlinedButton.styleFrom(
+                                  backgroundColor: isFollowed ? Colors.transparent : AppColors.primaryAccent.withOpacity(0.12),
+                                  side: BorderSide(
+                                    color: isFollowed ? AppColors.glassBorder : AppColors.primaryAccent,
+                                    width: 1,
+                                  ),
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  minimumSize: Size.zero,
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                            ],
+
+                            // Call Back Button
                             IconButton(
                               icon: const Icon(Icons.phone_in_talk_rounded, color: AppColors.primaryAccent),
                               onPressed: () {
@@ -129,7 +239,7 @@ class _CallsHistoryScreenState extends ConsumerState<CallsHistoryScreen> {
                                 ref.read(callingControllerProvider.notifier).startCall(
                                       receiverId: targetId,
                                       receiverProfile: {
-                                        'displayName': item['callerName'] ?? item['receiverName'] ?? 'Vybe User',
+                                        'displayName': friendName,
                                         'avatarUrl': item['avatarUrl'],
                                       },
                                     );
@@ -152,7 +262,7 @@ class _CallsHistoryScreenState extends ConsumerState<CallsHistoryScreen> {
         children: [
           Container(
             padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               color: AppColors.cardBackground,
               shape: BoxShape.circle,
             ),

@@ -6,6 +6,8 @@ import {
   checkProfilesTableExists,
   buildProfileFromSupabaseUser
 } from '../integrations/supabase/supabaseClient';
+import { isUserOnline, getUserPresence } from '../sockets/socketHandler';
+import { FollowController } from './followController';
 
 export class ProfileController {
   public static async getProfile(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -46,15 +48,27 @@ export class ProfileController {
         return;
       }
 
-      const presence = LocalDbStore.presence.get(id) || { status: 'offline' };
+      const presenceInfo = getUserPresence(id);
+      const currentStatus = presenceInfo.status;
+      const isOnline = presenceInfo.isOnline;
       const isFavourite = currentUserId ? LocalDbStore.favourites.has(`${currentUserId}:${id}`) : false;
+      const isFollowing = currentUserId ? FollowController.isFollowing(currentUserId, id) : false;
+      const isFollower = currentUserId ? FollowController.isFollowing(id, currentUserId) : false;
+      const followersCount = FollowController.getFollowersCount(id);
+      const followingCount = FollowController.getFollowingCount(id);
 
       res.json({
         success: true,
         data: {
           ...profile,
-          presence: presence.status,
+          status: currentStatus,
+          presence: currentStatus,
+          isOnline,
           isFavourite,
+          isFollowing,
+          isFollower,
+          followersCount,
+          followingCount,
         }
       });
     } catch (err: any) {

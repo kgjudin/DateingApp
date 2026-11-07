@@ -1,12 +1,13 @@
 import { Request, Response } from 'express';
 import { LocalDbStore } from '../integrations/supabase/supabaseClient';
+import { isUserOnline, getUserPresence } from '../sockets/socketHandler';
 
 export class AdminController {
   public static async getDashboardStats(req: Request, res: Response): Promise<void> {
     try {
       const users = Array.from(LocalDbStore.profiles.values());
       const totalUsers = users.length;
-      const onlineUsers = Array.from(LocalDbStore.presence.values()).filter(p => p.status === 'online').length;
+      const onlineUsers = Array.from(LocalDbStore.profiles.keys()).filter(id => isUserOnline(id)).length;
       const activeCalls = Array.from(LocalDbStore.calls.values()).filter(c => c.status === 'accepted' || c.status === 'ringing').length;
       const activeRooms = Array.from(LocalDbStore.rooms.values()).filter(r => r.isLive).length;
       const totalGroups = LocalDbStore.groups.size;
@@ -41,11 +42,12 @@ export class AdminController {
   public static async listUsers(req: Request, res: Response): Promise<void> {
     try {
       const users = Array.from(LocalDbStore.profiles.values()).map(p => {
-        const presence = LocalDbStore.presence.get(p.id) || { status: 'offline' };
+        const pres = getUserPresence(p.id);
         const wallet = LocalDbStore.wallets.get(p.id) || { balance: 0 };
         return {
           ...p,
-          status: presence.status,
+          status: pres.status,
+          isOnline: pres.isOnline,
           coinBalance: wallet.balance
         };
       });
@@ -111,7 +113,7 @@ export class AdminController {
   // HTML Dashboard view
   public static async renderDashboard(req: Request, res: Response): Promise<void> {
     const users = Array.from(LocalDbStore.profiles.values());
-    const onlineCount = Array.from(LocalDbStore.presence.values()).filter(p => p.status === 'online').length;
+    const onlineCount = Array.from(LocalDbStore.profiles.keys()).filter(id => isUserOnline(id)).length;
     const activeRooms = Array.from(LocalDbStore.rooms.values()).filter(r => r.isLive);
     const totalGifts = LocalDbStore.giftTransactions.length;
     const totalCoins = LocalDbStore.giftTransactions.reduce((acc, t) => acc + (t.coinAmount || 0), 0);
@@ -208,7 +210,8 @@ export class AdminController {
     </thead>
     <tbody>
       ${users.map(u => {
-        const pres = LocalDbStore.presence.get(u.id);
+        const pres = getUserPresence(u.id);
+        const currentStatus = pres.status;
         const wal = LocalDbStore.wallets.get(u.id);
         return `
           <tr>
@@ -217,7 +220,7 @@ export class AdminController {
             <td>${u.gender}</td>
             <td>${u.location || 'Online'}</td>
             <td>🪙 ${wal?.balance || 0}</td>
-            <td><span class="badge ${pres?.status === 'online' ? 'badge-online' : 'badge-offline'}">${pres?.status || 'offline'}</span></td>
+            <td><span class="badge ${currentStatus === 'online' ? 'badge-online' : 'badge-offline'}">${currentStatus}</span></td>
           </tr>
         `;
       }).join('')}

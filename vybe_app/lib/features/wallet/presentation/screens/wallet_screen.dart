@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/network/socket_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/glass_container.dart';
 import '../../../auth/presentation/auth_controller.dart';
@@ -14,11 +16,37 @@ class WalletScreen extends ConsumerStatefulWidget {
 
 class _WalletScreenState extends ConsumerState<WalletScreen> {
   List<dynamic> _transactions = [];
+  StreamSubscription? _walletSub;
+  StreamSubscription? _giftSub;
 
   @override
   void initState() {
     super.initState();
     _fetchWalletData();
+    _listenForRealtimeEvents();
+  }
+
+  @override
+  void dispose() {
+    _walletSub?.cancel();
+    _giftSub?.cancel();
+    super.dispose();
+  }
+
+  void _listenForRealtimeEvents() {
+    final socket = ref.read(socketServiceProvider);
+    _walletSub = socket.onWalletUpdated.listen((data) {
+      if (!mounted) return;
+      if (data['balance'] != null) {
+        ref.read(authControllerProvider.notifier).updateCoinBalance(data['balance'] as int);
+      }
+      _fetchWalletData();
+    });
+
+    _giftSub = socket.onGiftReceived.listen((data) {
+      if (!mounted) return;
+      _fetchWalletData();
+    });
   }
 
   Future<void> _fetchWalletData() async {
@@ -201,24 +229,38 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                 itemBuilder: (context, index) {
                   final tx = _transactions[index];
                   final isCredit = (tx['amount'] as int? ?? 0) > 0;
+                  final isGift = tx['type'] == 'gift_received';
 
                   return Container(
                     margin: const EdgeInsets.only(bottom: 10),
                     child: GlassContainer(
                       padding: const EdgeInsets.all(14),
+                      border: isGift
+                          ? Border.all(color: const Color(0xFFFFD700).withOpacity(0.4), width: 1)
+                          : null,
                       child: Row(
                         children: [
                           Container(
                             padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
-                              color: isCredit
-                                  ? AppColors.online.withOpacity(0.15)
-                                  : AppColors.error.withOpacity(0.15),
+                              color: isGift
+                                  ? const Color(0xFFFFD700).withOpacity(0.18)
+                                  : isCredit
+                                      ? AppColors.online.withOpacity(0.15)
+                                      : AppColors.error.withOpacity(0.15),
                               shape: BoxShape.circle,
                             ),
                             child: Icon(
-                              isCredit ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded,
-                              color: isCredit ? AppColors.online : AppColors.error,
+                              isGift
+                                  ? Icons.card_giftcard_rounded
+                                  : isCredit
+                                      ? Icons.arrow_downward_rounded
+                                      : Icons.arrow_upward_rounded,
+                              color: isGift
+                                  ? const Color(0xFFFFD700)
+                                  : isCredit
+                                      ? AppColors.online
+                                      : AppColors.error,
                               size: 18,
                             ),
                           ),
@@ -242,7 +284,11 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                           Text(
                             '${isCredit ? '+' : ''}${tx['amount']} Coins',
                             style: TextStyle(
-                              color: isCredit ? AppColors.online : AppColors.textPrimary,
+                              color: isGift
+                                  ? const Color(0xFFFFD700)
+                                  : isCredit
+                                      ? AppColors.online
+                                      : AppColors.textPrimary,
                               fontWeight: FontWeight.w800,
                               fontSize: 14,
                             ),

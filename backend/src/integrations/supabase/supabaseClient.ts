@@ -1,5 +1,7 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { config } from '../../config';
+import fs from 'fs';
+import path from 'path';
 
 // In-memory data store for fast local operations, signaling and graceful fallback
 export class LocalDbStore {
@@ -7,6 +9,7 @@ export class LocalDbStore {
   public static preferences: Map<string, any> = new Map();
   public static presence: Map<string, any> = new Map();
   public static favourites: Set<string> = new Set(); // "userId:favUserId"
+  public static follows: Set<string> = new Set(); // "followerId:followingId"
   public static calls: Map<string, any> = new Map();
   public static callHistory: any[] = [];
   public static groups: Map<string, any> = new Map();
@@ -23,27 +26,89 @@ export class LocalDbStore {
   public static userReports: any[] = [];
   public static credentials: Map<string, { email: string; password: string }> = new Map();
 
+  private static getStoreFilePath(): string {
+    const dataDir = path.join(process.cwd(), 'data');
+    if (!fs.existsSync(dataDir)) {
+      try {
+        fs.mkdirSync(dataDir, { recursive: true });
+      } catch (_) {}
+    }
+    return path.join(dataDir, 'local_db.json');
+  }
+
+  public static saveToDisk(): void {
+    try {
+      const filePath = this.getStoreFilePath();
+      const payload = {
+        follows: Array.from(this.follows),
+        favourites: Array.from(this.favourites),
+        notifications: this.notifications,
+        wallets: Array.from(this.wallets.entries()),
+        userBlocks: Array.from(this.userBlocks)
+      };
+      fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), 'utf-8');
+    } catch (e: any) {
+      console.warn('[LocalDbStore] Error saving to disk:', e.message);
+    }
+  }
+
+  public static loadFromDisk(): void {
+    try {
+      const filePath = this.getStoreFilePath();
+      if (!fs.existsSync(filePath)) return;
+      const raw = fs.readFileSync(filePath, 'utf-8');
+      const data = JSON.parse(raw);
+      if (Array.isArray(data.follows)) {
+        for (const item of data.follows) {
+          this.follows.add(item);
+        }
+      }
+      if (Array.isArray(data.favourites)) {
+        for (const item of data.favourites) {
+          this.favourites.add(item);
+        }
+      }
+      if (Array.isArray(data.notifications)) {
+        this.notifications = data.notifications;
+      }
+      if (Array.isArray(data.wallets)) {
+        for (const [k, v] of data.wallets) {
+          this.wallets.set(k, v);
+        }
+      }
+      if (Array.isArray(data.userBlocks)) {
+        for (const item of data.userBlocks) {
+          this.userBlocks.add(item);
+        }
+      }
+      console.log(`[LocalDbStore] Restored ${this.follows.size} follow(s) and ${this.notifications.length} notification(s) from disk.`);
+    } catch (e: any) {
+      console.warn('[LocalDbStore] Error loading from disk:', e.message);
+    }
+  }
+
   public static seedDefaults() {
     if (this.gifts.length > 0) return;
 
     // Default Gifts
     this.gifts = [
-      { id: 'gift-1', name: 'Rose', iconName: 'rose', coinPrice: 10, description: 'A sweet red rose' },
-      { id: 'gift-2', name: 'Coffee', iconName: 'coffee', coinPrice: 20, description: 'Warm coffee for a cozy voice chat' },
-      { id: 'gift-3', name: 'Heart', iconName: 'favorite', coinPrice: 50, description: 'Send love and appreciation' },
-      { id: 'gift-4', name: 'Star', iconName: 'star', coinPrice: 100, description: 'You are a shining star in this room!' },
-      { id: 'gift-5', name: 'Fire', iconName: 'whatshot', coinPrice: 250, description: 'This conversation is on fire!' },
-      { id: 'gift-6', name: 'Trophy', iconName: 'emoji_events', coinPrice: 500, description: 'Champion speaker badge' },
-      { id: 'gift-7', name: 'Diamond', iconName: 'diamond', coinPrice: 1000, description: 'A sparkling diamond of pure luxury' },
-      { id: 'gift-8', name: 'Crown', iconName: 'workspace_premium', coinPrice: 2500, description: 'Royalty status for outstanding hosts' },
-      { id: 'gift-9', name: 'Rocket', iconName: 'rocket_launch', coinPrice: 5000, description: 'To the moon! Ultimate hype gift' },
-      { id: 'gift-10', name: 'Luxury Car', iconName: 'directions_car', coinPrice: 10000, description: 'Grand prestige gift of the platform' },
+      { id: 'gift-1', name: 'Rose', iconName: 'rose', emoji: '🌹', coinPrice: 10, description: 'A sweet red rose' },
+      { id: 'gift-2', name: 'Coffee', iconName: 'coffee', emoji: '☕', coinPrice: 20, description: 'Warm coffee for a cozy voice chat' },
+      { id: 'gift-3', name: 'Heart', iconName: 'favorite', emoji: '💖', coinPrice: 50, description: 'Send love and appreciation' },
+      { id: 'gift-4', name: 'Star', iconName: 'star', emoji: '⭐', coinPrice: 100, description: 'You are a shining star in this room!' },
+      { id: 'gift-5', name: 'Fire', iconName: 'whatshot', emoji: '🔥', coinPrice: 250, description: 'This conversation is on fire!' },
+      { id: 'gift-6', name: 'Trophy', iconName: 'emoji_events', emoji: '🏆', coinPrice: 500, description: 'Champion speaker badge' },
+      { id: 'gift-7', name: 'Diamond', iconName: 'diamond', emoji: '💎', coinPrice: 1000, description: 'A sparkling diamond of pure luxury' },
+      { id: 'gift-8', name: 'Crown', iconName: 'workspace_premium', emoji: '👑', coinPrice: 2500, description: 'Royalty status for outstanding hosts' },
+      { id: 'gift-9', name: 'Rocket', iconName: 'rocket_launch', emoji: '🚀', coinPrice: 5000, description: 'To the moon! Ultimate hype gift' },
+      { id: 'gift-10', name: 'Luxury Car', iconName: 'directions_car', emoji: '🏎️', coinPrice: 10000, description: 'Grand prestige gift of the platform' },
     ];
   }
 }
 
-// Seed defaults on load
+// Seed defaults and load persisted data on load
 LocalDbStore.seedDefaults();
+LocalDbStore.loadFromDisk();
 
 let supabaseInstance: SupabaseClient | null = null;
 let _hasCheckedProfilesTable = false;
@@ -112,7 +177,7 @@ export function buildProfileFromSupabaseUser(sbUser: any, pRow?: any): any {
     voiceIntroDuration: pRow?.voice_intro_duration || meta.voiceIntroDuration || 0,
     languages: pRow?.languages || meta.languages || ['English'],
     interests: pRow?.hobbies || meta.interests || ['Music', 'Travelling'],
-    status: 'online',
+    status: 'offline',
     isSuspended: pRow?.is_suspended || false,
     createdAt: pRow?.created_at || sbUser.created_at || new Date().toISOString()
   };
@@ -147,9 +212,11 @@ export async function syncUsersFromSupabase(): Promise<void> {
       const profile = buildProfileFromSupabaseUser(u, pRow);
 
       LocalDbStore.profiles.set(u.id, profile);
+
+      // Users default strictly to offline on sync/startup until an active socket connects
       LocalDbStore.presence.set(u.id, {
         userId: u.id,
-        status: 'online',
+        status: 'offline',
         lastSeenAt: u.last_sign_in_at || u.created_at || new Date().toISOString()
       });
 
@@ -169,6 +236,16 @@ export async function syncUsersFromSupabase(): Promise<void> {
         LocalDbStore.wallets.set(u.id, { balance: 100, earned: 100, spent: 0 });
       }
     }
+
+    // Preload follows if table exists
+    try {
+      const { data: followRows } = await supabase.from('follows').select('follower_id, following_id');
+      if (followRows) {
+        for (const row of followRows) {
+          LocalDbStore.follows.add(`${row.follower_id}:${row.following_id}`);
+        }
+      }
+    } catch (_) {}
     console.log(`[Supabase] Synced ${list.users.length} active user(s) into memory cache.`);
   } catch (err: any) {
     console.warn('[Supabase] Warning syncing users:', err.message);

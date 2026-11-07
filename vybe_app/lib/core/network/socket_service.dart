@@ -15,15 +15,25 @@ class SocketService {
   final _callAcceptedController = StreamController<Map<String, dynamic>>.broadcast();
   final _callEndedController = StreamController<Map<String, dynamic>>.broadcast();
   final _liveGiftController = StreamController<Map<String, dynamic>>.broadcast();
+  final _giftReceivedController = StreamController<Map<String, dynamic>>.broadcast();
+  final _walletUpdatedController = StreamController<Map<String, dynamic>>.broadcast();
+  final _notificationController = StreamController<Map<String, dynamic>>.broadcast();
   final _roomSpeakerController = StreamController<Map<String, dynamic>>.broadcast();
   final _presenceChangeController = StreamController<Map<String, dynamic>>.broadcast();
+  final _followedUserOnlineController = StreamController<Map<String, dynamic>>.broadcast();
+  final _newFollowerController = StreamController<Map<String, dynamic>>.broadcast();
 
   Stream<Map<String, dynamic>> get onIncomingCall => _incomingCallController.stream;
   Stream<Map<String, dynamic>> get onCallAccepted => _callAcceptedController.stream;
   Stream<Map<String, dynamic>> get onCallEnded => _callEndedController.stream;
   Stream<Map<String, dynamic>> get onLiveGift => _liveGiftController.stream;
+  Stream<Map<String, dynamic>> get onGiftReceived => _giftReceivedController.stream;
+  Stream<Map<String, dynamic>> get onWalletUpdated => _walletUpdatedController.stream;
+  Stream<Map<String, dynamic>> get onNotificationReceived => _notificationController.stream;
+  Stream<Map<String, dynamic>> get onNewFollower => _newFollowerController.stream;
   Stream<Map<String, dynamic>> get onRoomSpeakerUpdated => _roomSpeakerController.stream;
   Stream<Map<String, dynamic>> get onPresenceChanged => _presenceChangeController.stream;
+  Stream<Map<String, dynamic>> get onFollowedUserOnline => _followedUserOnlineController.stream;
 
   bool get isConnected => _socket?.connected ?? false;
 
@@ -82,9 +92,48 @@ class SocketService {
       });
 
       // Room & Gift Events
+      _socket!.on('gift_received', (data) {
+        if (data is Map) {
+          final map = Map<String, dynamic>.from(data);
+          _giftReceivedController.add(map);
+          _liveGiftController.add(map);
+        }
+      });
+
       _socket!.on('live_gift_animation', (data) {
         if (data is Map) {
-          _liveGiftController.add(Map<String, dynamic>.from(data));
+          final map = Map<String, dynamic>.from(data);
+          _liveGiftController.add(map);
+          _giftReceivedController.add(map);
+        }
+      });
+
+      _socket!.on('wallet_updated', (data) {
+        if (data is Map) {
+          _walletUpdatedController.add(Map<String, dynamic>.from(data));
+        }
+      });
+
+      _socket!.on('new_follower', (data) {
+        if (data is Map) {
+          final map = Map<String, dynamic>.from(data);
+          _newFollowerController.add(map);
+          if (map['notification'] != null && map['notification'] is Map) {
+            _notificationController.add(Map<String, dynamic>.from(map['notification']));
+          } else {
+            _notificationController.add(map);
+          }
+        }
+      });
+
+      _socket!.on('notification_received', (data) {
+        if (data is Map) {
+          final map = Map<String, dynamic>.from(data);
+          _notificationController.add(map);
+          final type = map['type']?.toString();
+          if (type == 'new_follower' || type == 'follow') {
+            _newFollowerController.add(map);
+          }
         }
       });
 
@@ -97,6 +146,12 @@ class SocketService {
       _socket!.on('user_presence_changed', (data) {
         if (data is Map) {
           _presenceChangeController.add(Map<String, dynamic>.from(data));
+        }
+      });
+
+      _socket!.on('followed_user_online', (data) {
+        if (data is Map) {
+          _followedUserOnlineController.add(Map<String, dynamic>.from(data));
         }
       });
     } catch (e) {

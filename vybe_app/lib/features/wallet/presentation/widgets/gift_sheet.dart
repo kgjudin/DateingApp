@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../auth/presentation/auth_controller.dart';
@@ -37,6 +38,21 @@ class _GiftBottomSheetState extends ConsumerState<GiftBottomSheet> {
     {'id': 'gift-9', 'name': 'Rocket', 'emoji': '🚀', 'price': 5000},
     {'id': 'gift-10', 'name': 'Luxury Car', 'emoji': '🏎️', 'price': 10000},
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchFreshWallet();
+  }
+
+  Future<void> _fetchFreshWallet() async {
+    try {
+      final res = await ref.read(apiClientProvider).get('/wallet');
+      if (res is Map && res['balance'] != null && mounted) {
+        ref.read(authControllerProvider.notifier).updateCoinBalance(res['balance'] as int);
+      }
+    } catch (_) {}
+  }
 
   Future<void> _sendGift() async {
     if (_selectedGiftId == null) return;
@@ -149,7 +165,38 @@ class _GiftBottomSheetState extends ConsumerState<GiftBottomSheet> {
 
           if (_statusMessage != null) ...[
             const SizedBox(height: 12),
-            Text(_statusMessage!, style: const TextStyle(color: AppColors.error, fontSize: 12, fontWeight: FontWeight.w600)),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppColors.error.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.error.withOpacity(0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline_rounded, color: AppColors.error, size: 16),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(_statusMessage!, style: const TextStyle(color: AppColors.error, fontSize: 12, fontWeight: FontWeight.w600)),
+                  ),
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.pop(context);
+                      context.push('/wallet');
+                    },
+                    child: const Text(
+                      'Recharge',
+                      style: TextStyle(
+                        color: AppColors.primaryAccentLight,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 12,
+                        decoration: TextDecoration.underline,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
 
           const SizedBox(height: 20),

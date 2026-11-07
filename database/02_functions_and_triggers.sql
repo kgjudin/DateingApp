@@ -64,7 +64,7 @@ BEGIN
         last_seen_at
     ) VALUES (
         NEW.id,
-        'online',
+        'offline',
         NOW()
     ) ON CONFLICT (user_id) DO NOTHING;
 

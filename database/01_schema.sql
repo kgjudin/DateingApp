@@ -169,6 +169,18 @@ CREATE TABLE IF NOT EXISTS public.favourites (
 );
 
 -- ------------------------------------------------------------------------------
+-- 7b. TABLE: follows (Followers & Following network)
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.follows (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    follower_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    following_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(follower_id, following_id),
+    CONSTRAINT chk_no_self_follow CHECK (follower_id != following_id)
+);
+
+-- ------------------------------------------------------------------------------
 -- 8. TABLE: calls & call_participants & call_history
 -- ------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.calls (

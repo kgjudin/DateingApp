@@ -211,6 +211,9 @@ class AuthController extends StateNotifier<AuthState> {
   }
 
   Future<void> logout() async {
+    try {
+      await _ref.read(apiClientProvider).post('/auth/logout');
+    } catch (_) {}
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(AppConstants.tokenKey);
     await prefs.remove(AppConstants.userIdKey);

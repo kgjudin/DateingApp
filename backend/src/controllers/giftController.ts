@@ -71,7 +71,7 @@ export class GiftController {
       // Credit receiver
       let receiverWallet = LocalDbStore.wallets.get(receiverId);
       if (!receiverWallet) {
-        receiverWallet = { balance: 0, earned: 0, spent: 0 };
+        receiverWallet = { balance: 100, earned: 100, spent: 0 };
       }
       receiverWallet.balance += gift.coinPrice;
       receiverWallet.earned += gift.coinPrice;
@@ -80,6 +80,7 @@ export class GiftController {
       const txId = `tx_gift_${Date.now()}`;
       const senderProfile = LocalDbStore.profiles.get(senderId) || { displayName: 'Vyber' };
       const receiverProfile = LocalDbStore.profiles.get(receiverId) || { displayName: 'Vyber' };
+      const giftEmoji = (gift as any).emoji || '🎁';
 
       const giftTx = {
         id: txId,
@@ -90,6 +91,7 @@ export class GiftController {
         senderAvatar: senderProfile.avatarUrl,
         giftId: gift.id,
         giftName: gift.name,
+        emoji: giftEmoji,
         iconName: gift.iconName,
         coinAmount: gift.coinPrice,
         roomId,
@@ -106,7 +108,7 @@ export class GiftController {
         amount: -gift.coinPrice,
         balanceAfter: senderWallet.balance,
         type: 'gift_sent',
-        description: `Sent ${gift.name} to ${receiverProfile.displayName}`,
+        description: `Sent ${gift.name} ${giftEmoji} to ${receiverProfile.displayName}`,
         referenceId: txId,
         createdAt: new Date().toISOString()
       });
@@ -117,30 +119,53 @@ export class GiftController {
         amount: gift.coinPrice,
         balanceAfter: receiverWallet.balance,
         type: 'gift_received',
-        description: `Received ${gift.name} from ${senderProfile.displayName}`,
+        description: `Received ${gift.name} ${giftEmoji} from ${senderProfile.displayName}`,
         referenceId: txId,
         createdAt: new Date().toISOString()
       });
 
       // Notification
-      LocalDbStore.notifications.unshift({
-        id: `notif_${Date.now()}`,
+      const notifData = {
+        id: `notif_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         userId: receiverId,
         type: 'gift_received',
-        title: 'Gift Received!',
-        body: `${senderProfile.displayName} sent you a ${gift.name}!`,
-        payload: giftTx,
+        title: 'Gift Received! 🎁',
+        body: `${senderProfile.displayName} sent you a ${gift.name} ${giftEmoji}! (+${gift.coinPrice} Coins)`,
+        payload: {
+          ...giftTx,
+          emoji: giftEmoji,
+          senderName: senderProfile.displayName,
+          receiverNewBalance: receiverWallet.balance,
+        },
         isRead: false,
         createdAt: new Date().toISOString()
-      });
+      };
+      LocalDbStore.notifications.unshift(notifData);
+      LocalDbStore.saveToDisk();
 
-      // Broadcast live gift animation via Socket.IO
+      // Broadcast live gift animation & updates via Socket.IO
       const io = getSocketIo();
       if (io) {
+        const giftPayload = {
+          ...giftTx,
+          emoji: giftEmoji,
+          receiverNewBalance: receiverWallet.balance
+        };
+
+        // 1. Direct delivery to receiver's user channel
+        io.to(`user:${receiverId}`).emit('gift_received', giftPayload);
+        io.to(`user:${receiverId}`).emit('live_gift_animation', giftPayload);
+        io.to(`user:${receiverId}`).emit('wallet_updated', {
+          balance: receiverWallet.balance,
+          earned: receiverWallet.earned,
+          delta: gift.coinPrice,
+          transaction: giftTx
+        });
+        io.to(`user:${receiverId}`).emit('notification_received', notifData);
+
+        // 2. Broadcast live gift animation to group room if sent in a room
         if (roomId) {
-          io.to(`room:${roomId}`).emit('live_gift_animation', giftTx);
-        } else {
-          io.to(`user:${receiverId}`).emit('gift_received', giftTx);
+          io.to(`room:${roomId}`).emit('live_gift_animation', giftPayload);
         }
       }
 
@@ -151,6 +176,34 @@ export class GiftController {
           senderNewBalance: senderWallet.balance
         }
       });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: { message: err.message } });
+    }
+  }
+
+  public static async getReceivedGifts(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        res.status(401).json({ success: false, error: { message: 'Unauthorized' } });
+        return;
+      }
+      const received = LocalDbStore.giftTransactions.filter(g => g.receiverId === userId);
+      res.json({ success: true, data: received });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: { message: err.message } });
+    }
+  }
+
+  public static async getSentGifts(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        res.status(401).json({ success: false, error: { message: 'Unauthorized' } });
+        return;
+      }
+      const sent = LocalDbStore.giftTransactions.filter(g => g.senderId === userId);
+      res.json({ success: true, data: sent });
     } catch (err: any) {
       res.status(500).json({ success: false, error: { message: err.message } });
     }

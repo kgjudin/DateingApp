@@ -17,6 +17,7 @@ class CallingState {
   final int durationSeconds;
   final bool isMuted;
   final bool isSpeakerOn;
+  final bool isCallScreenVisible;
   final String? errorMessage;
 
   CallingState({
@@ -29,6 +30,7 @@ class CallingState {
     this.durationSeconds = 0,
     this.isMuted = false,
     this.isSpeakerOn = true,
+    this.isCallScreenVisible = false,
     this.errorMessage,
   });
 
@@ -42,6 +44,7 @@ class CallingState {
     int? durationSeconds,
     bool? isMuted,
     bool? isSpeakerOn,
+    bool? isCallScreenVisible,
     String? errorMessage,
   }) {
     return CallingState(
@@ -54,6 +57,7 @@ class CallingState {
       durationSeconds: durationSeconds ?? this.durationSeconds,
       isMuted: isMuted ?? this.isMuted,
       isSpeakerOn: isSpeakerOn ?? this.isSpeakerOn,
+      isCallScreenVisible: isCallScreenVisible ?? this.isCallScreenVisible,
       errorMessage: errorMessage,
     );
   }
@@ -223,6 +227,10 @@ class CallingController extends StateNotifier<CallingState> {
   Future<void> toggleMute() async {
     await _ref.read(agoraVoiceServiceProvider).toggleMute();
     state = state.copyWith(isMuted: _ref.read(agoraVoiceServiceProvider).isMuted);
+  }
+
+  void setCallScreenVisible(bool isVisible) {
+    state = state.copyWith(isCallScreenVisible: isVisible);
   }
 
   Future<void> toggleSpeaker() async {

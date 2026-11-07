@@ -95,23 +95,23 @@ class DiscoveryScreen extends ConsumerWidget {
               const SizedBox(height: 18),
 
               // SECTION 1: ONLINE NOW (Horizontal Avatar Carousel)
-              _buildSectionTitle('Online Now', '${discoveryState.onlineNow.length} active'),
+              _buildSectionTitle('Online Now', '${discoveryState.filteredOnlineNow.length} active'),
               const SizedBox(height: 12),
-              _buildOnlineNowCarousel(context, ref, discoveryState.onlineNow),
+              _buildOnlineNowCarousel(context, ref, discoveryState.filteredOnlineNow, discoveryState.selectedGenderFilter),
 
               const SizedBox(height: 24),
 
               // SECTION 2: BASED ON YOUR INTERESTS
               _buildSectionTitle('Based on Your Interests', 'Top shared vibes'),
               const SizedBox(height: 12),
-              _buildDiscoveryUserList(context, ref, discoveryState.basedOnInterests),
+              _buildDiscoveryUserList(context, ref, discoveryState.filteredBasedOnInterests),
 
               const SizedBox(height: 24),
 
               // SECTION 3: PEOPLE YOU MAY LIKE
               _buildSectionTitle('People You May Like', 'Recommended'),
               const SizedBox(height: 12),
-              _buildDiscoveryUserList(context, ref, discoveryState.peopleYouMayLike),
+              _buildDiscoveryUserList(context, ref, discoveryState.filteredPeopleYouMayLike),
             ],
           ),
         ),
@@ -188,8 +188,17 @@ class DiscoveryScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildOnlineNowCarousel(BuildContext context, WidgetRef ref, List<dynamic> users) {
+  Widget _buildOnlineNowCarousel(BuildContext context, WidgetRef ref, List<dynamic> users, String genderFilter) {
     if (users.isEmpty) {
+      String emptyMessage = 'No other users online right now. Invite friends!';
+      if (genderFilter == 'women') {
+        emptyMessage = 'No women online right now.';
+      } else if (genderFilter == 'men') {
+        emptyMessage = 'No men online right now.';
+      } else if (genderFilter == 'non_binary') {
+        emptyMessage = 'No non-binary users online right now.';
+      }
+
       return Container(
         height: 72,
         margin: const EdgeInsets.symmetric(horizontal: 20),
@@ -199,9 +208,9 @@ class DiscoveryScreen extends ConsumerWidget {
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: AppColors.glassBorder),
         ),
-        child: const Text(
-          'No other users online right now. Invite friends!',
-          style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+        child: Text(
+          emptyMessage,
+          style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
         ),
       );
     }
@@ -214,6 +223,11 @@ class DiscoveryScreen extends ConsumerWidget {
         itemCount: users.length,
         itemBuilder: (context, index) {
           final user = users[index];
+          final isOnline = user['isOnline'] == true ||
+              user['status'] == 'online' ||
+              user['status'] == 'in_call' ||
+              user['status'] == 'in_room';
+
           return GestureDetector(
             onTap: () => context.push('/profile/${user['id']}'),
             child: Container(
@@ -234,10 +248,10 @@ class DiscoveryScreen extends ConsumerWidget {
                           backgroundImage: NetworkImage(user['avatarUrl'] ?? ''),
                         ),
                       ),
-                      const Positioned(
+                      Positioned(
                         bottom: 0,
                         right: 2,
-                        child: OnlineBadge(size: 13, isOnline: true),
+                        child: OnlineBadge(size: 13, isOnline: isOnline),
                       ),
                     ],
                   ),
@@ -347,10 +361,16 @@ class DiscoveryScreen extends ConsumerWidget {
                                   backgroundImage: NetworkImage(user['avatarUrl'] ?? ''),
                                 ),
                               ),
-                              const Positioned(
+                              Positioned(
                                 bottom: 0,
                                 right: 0,
-                                child: OnlineBadge(size: 12, isOnline: true),
+                                child: OnlineBadge(
+                                  size: 12,
+                                  isOnline: user['isOnline'] == true ||
+                                      user['status'] == 'online' ||
+                                      user['status'] == 'in_call' ||
+                                      user['status'] == 'in_room',
+                                ),
                               ),
                             ],
                           ),
@@ -366,9 +386,35 @@ class DiscoveryScreen extends ConsumerWidget {
                                   fontSize: 16,
                                 ),
                               ),
-                              Text(
-                                user['location'] ?? 'Online',
-                                style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                              Row(
+                                children: [
+                                  Text(
+                                    user['location'] ?? 'Online',
+                                    style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                                  ),
+                                  if (user['gender'] != null && user['gender'] != 'prefer_not_to_say') ...[
+                                    const SizedBox(width: 6),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.primaryAccent.withOpacity(0.2),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        user['gender'] == 'female' || user['gender'] == 'women'
+                                            ? '♀ Woman'
+                                            : (user['gender'] == 'male' || user['gender'] == 'men'
+                                                ? '♂ Man'
+                                                : '⚧ Non-Binary'),
+                                        style: const TextStyle(
+                                          color: AppColors.primaryAccentLight,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
                               ),
                             ],
                           ),

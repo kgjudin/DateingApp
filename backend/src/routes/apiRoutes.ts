@@ -3,6 +3,7 @@ import { AuthController } from '../controllers/authController';
 import { ProfileController } from '../controllers/profileController';
 import { DiscoveryController } from '../controllers/discoveryController';
 import { CallController } from '../controllers/callController';
+import { FollowController } from '../controllers/followController';
 import { GroupController } from '../controllers/groupController';
 import { RoomController } from '../controllers/roomController';
 import { GiftController, WalletController } from '../controllers/giftController';
@@ -25,6 +26,7 @@ router.get('/health', (req, res) => {
 // Authentication
 router.post('/auth/register', AuthController.register);
 router.post('/auth/login', AuthController.login);
+router.post('/auth/logout', authenticateJwt, AuthController.logout);
 router.get('/auth/me', authenticateJwt, AuthController.getCurrentUser);
 
 // Profiles & Preferences
@@ -48,6 +50,13 @@ router.get('/calls/history', authenticateJwt, CallController.getCallHistory);
 router.post('/favourites/toggle', authenticateJwt, CallController.toggleFavourite);
 router.get('/favourites', authenticateJwt, CallController.getFavourites);
 
+// Follow & Network
+router.post('/follow/toggle', authenticateJwt, FollowController.toggleFollow);
+router.get('/follow/followers/:userId', authenticateJwt, FollowController.getFollowers);
+router.get('/follow/followers', authenticateJwt, FollowController.getFollowers);
+router.get('/follow/following/:userId', authenticateJwt, FollowController.getFollowing);
+router.get('/follow/following', authenticateJwt, FollowController.getFollowing);
+
 // Groups
 router.get('/groups', authenticateJwt, GroupController.listGroups);
 router.get('/groups/:id', authenticateJwt, GroupController.getGroupDetails);
@@ -65,6 +74,8 @@ router.post('/rooms/:id/leave', authenticateJwt, RoomController.leaveRoom);
 // Gifts & Wallet
 router.get('/gifts/catalogue', authenticateJwt, GiftController.getGiftCatalogue);
 router.post('/gifts/send', authenticateJwt, GiftController.sendGift);
+router.get('/gifts/received', authenticateJwt, GiftController.getReceivedGifts);
+router.get('/gifts/sent', authenticateJwt, GiftController.getSentGifts);
 router.get('/wallet', authenticateJwt, WalletController.getWallet);
 router.post('/wallet/purchase', authenticateJwt, WalletController.purchaseCoins);
 

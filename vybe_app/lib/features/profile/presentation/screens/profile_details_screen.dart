@@ -1,13 +1,17 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/network/socket_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/glass_container.dart';
 import '../../../../core/widgets/online_badge.dart';
 import '../../../../core/widgets/voice_waveform_widget.dart';
+import '../../../auth/presentation/auth_controller.dart';
 import '../../../calling/presentation/calling_controller.dart';
 import '../../../wallet/presentation/widgets/gift_sheet.dart';
+import '../widgets/follow_users_sheet.dart';
 
 class ProfileDetailsScreen extends ConsumerStatefulWidget {
   final String userId;
@@ -23,30 +27,134 @@ class _ProfileDetailsScreenState extends ConsumerState<ProfileDetailsScreen> {
   bool _isLoading = true;
   bool _isPlayingIntro = false;
   bool _isFavourite = false;
+  bool _isFollowing = false;
+  int _followersCount = 0;
+  int _followingCount = 0;
+  StreamSubscription? _presenceSub;
 
   @override
   void initState() {
     super.initState();
     _fetchProfile();
+    _presenceSub = ref.read(socketServiceProvider).onPresenceChanged.listen((data) {
+      final uId = data['userId']?.toString().toLowerCase();
+      final status = data['status']?.toString().toLowerCase();
+      final isOnline = data['isOnline'] == true || status == 'online' || status == 'in_call' || status == 'in_room';
+
+      if (uId == widget.userId.toLowerCase() && _profile != null && mounted) {
+        setState(() {
+          _profile!['status'] = status;
+          _profile!['presence'] = status;
+          _profile!['isOnline'] = isOnline;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _presenceSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _fetchProfile() async {
     try {
       final res = await ref.read(apiClientProvider).get('/profile/${widget.userId}');
-      if (res is Map) {
+      if (res is Map && mounted) {
         setState(() {
           _profile = Map<String, dynamic>.from(res);
           _isFavourite = _profile?['isFavourite'] ?? false;
+          _isFollowing = _profile?['isFollowing'] ?? false;
+          _followersCount = _profile?['followersCount'] ?? 0;
+          _followingCount = _profile?['followingCount'] ?? 0;
           _isLoading = false;
         });
         return;
       }
     } catch (_) {}
 
+    if (mounted) {
+      setState(() {
+        _profile = null;
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _toggleFollow() async {
+    final myId = ref.read(authControllerProvider).user?['id'];
+    if (myId != null && myId == widget.userId) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('You cannot follow yourself')),
+      );
+      return;
+    }
+
+    final nextState = !_isFollowing;
     setState(() {
-      _profile = null;
-      _isLoading = false;
+      _isFollowing = nextState;
+      _followersCount += nextState ? 1 : -1;
+      if (_followersCount < 0) _followersCount = 0;
     });
+
+    try {
+      final res = await ref.read(apiClientProvider).post('/follow/toggle', body: {
+        'targetUserId': widget.userId,
+      });
+
+      if (res is Map && mounted) {
+        setState(() {
+          if (res['isFollowing'] != null) {
+            _isFollowing = res['isFollowing'] == true;
+          }
+          if (res['followersCount'] != null) {
+            _followersCount = res['followersCount'];
+          }
+          if (res['followingCount'] != null) {
+            _followingCount = res['followingCount'];
+          }
+        });
+      }
+
+      if (mounted) {
+        final friendName = _profile?['displayName'] ?? 'friend';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: AppColors.cardBackground,
+            content: Text(
+              _isFollowing
+                  ? 'Followed $friendName! They received a notification.'
+                  : 'Unfollowed $friendName.',
+              style: const TextStyle(color: Colors.white),
+            ),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isFollowing = !nextState;
+          _followersCount += nextState ? -1 : 1;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not update follow: $e')),
+        );
+      }
+    }
+  }
+
+  void _openFollowSheet(String title, bool isFollowers) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => FollowUsersSheet(
+        title: title,
+        userId: widget.userId,
+        isFollowers: isFollowers,
+      ),
+    ).then((_) => _fetchProfile());
   }
 
   Future<void> _toggleFavourite() async {
@@ -79,6 +187,10 @@ class _ProfileDetailsScreenState extends ConsumerState<ProfileDetailsScreen> {
     }
 
     final user = _profile!;
+    final currentUserId = ref.watch(authControllerProvider).user?['id'];
+    final isMe = currentUserId != null && currentUserId == widget.userId;
+    final status = user['status']?.toString().toLowerCase();
+    final isOnline = user['isOnline'] == true || status == 'online' || status == 'in_call' || status == 'in_room' || user['presence'] == 'online';
     final interests = (user['interests'] as List?) ?? [];
 
     return Scaffold(
@@ -169,10 +281,10 @@ class _ProfileDetailsScreenState extends ConsumerState<ProfileDetailsScreen> {
                                   backgroundImage: NetworkImage(user['avatarUrl'] ?? ''),
                                 ),
                               ),
-                              const Positioned(
+                              Positioned(
                                 bottom: 2,
                                 right: 2,
-                                child: OnlineBadge(size: 15, isOnline: true),
+                                child: OnlineBadge(size: 15, isOnline: isOnline),
                               ),
                             ],
                           ),
@@ -194,10 +306,19 @@ class _ProfileDetailsScreenState extends ConsumerState<ProfileDetailsScreen> {
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                                   decoration: BoxDecoration(
-                                    color: AppColors.online.withOpacity(0.15),
+                                    color: isOnline
+                                        ? AppColors.online.withOpacity(0.15)
+                                        : AppColors.textMuted.withOpacity(0.15),
                                     borderRadius: BorderRadius.circular(8),
                                   ),
-                                  child: const Text('Online Now', style: TextStyle(color: AppColors.online, fontSize: 11, fontWeight: FontWeight.w700)),
+                                  child: Text(
+                                    isOnline ? 'Online Now' : 'Offline',
+                                    style: TextStyle(
+                                      color: isOnline ? AppColors.online : AppColors.textSecondary,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
                                 ),
                               ],
                             ),
@@ -205,7 +326,82 @@ class _ProfileDetailsScreenState extends ConsumerState<ProfileDetailsScreen> {
                         ],
                       ),
 
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 18),
+
+                      // FOLLOWERS, FOLLOWING & FOLLOW ACTION ROW
+                      Row(
+                        children: [
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () => _openFollowSheet('Followers', true),
+                              behavior: HitTestBehavior.opaque,
+                              child: GlassContainer(
+                                padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
+                                child: Column(
+                                  children: [
+                                    Text('$_followersCount', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16)),
+                                    const SizedBox(height: 2),
+                                    const Text('Followers', style: TextStyle(color: AppColors.secondaryAccent, fontSize: 11, fontWeight: FontWeight.w600)),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () => _openFollowSheet('Following', false),
+                              behavior: HitTestBehavior.opaque,
+                              child: GlassContainer(
+                                padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
+                                child: Column(
+                                  children: [
+                                    Text('$_followingCount', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16)),
+                                    const SizedBox(height: 2),
+                                    const Text('Following', style: TextStyle(color: AppColors.secondaryAccent, fontSize: 11, fontWeight: FontWeight.w600)),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: isMe
+                                ? OutlinedButton.icon(
+                                    onPressed: () => context.push('/profile-builder'),
+                                    icon: const Icon(Icons.edit_rounded, size: 16, color: AppColors.primaryAccent),
+                                    label: const Text('Edit Profile', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
+                                    style: OutlinedButton.styleFrom(
+                                      side: const BorderSide(color: AppColors.primaryAccent, width: 1.2),
+                                      foregroundColor: AppColors.primaryAccent,
+                                      padding: const EdgeInsets.symmetric(vertical: 14),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                    ),
+                                  )
+                                : ElevatedButton.icon(
+                                    onPressed: _toggleFollow,
+                                    icon: Icon(
+                                      _isFollowing ? Icons.check_rounded : Icons.person_add_rounded,
+                                      size: 16,
+                                      color: Colors.white,
+                                    ),
+                                    label: Text(
+                                      _isFollowing ? 'Following' : 'Follow',
+                                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+                                    ),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: _isFollowing ? AppColors.secondaryBackground : AppColors.primaryAccent,
+                                      foregroundColor: Colors.white,
+                                      side: _isFollowing ? const BorderSide(color: AppColors.primaryAccent, width: 1.2) : BorderSide.none,
+                                      padding: const EdgeInsets.symmetric(vertical: 14),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                    ),
+                                  ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 20),
 
                       // BIO
                       Text(

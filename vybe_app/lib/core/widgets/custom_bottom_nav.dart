@@ -34,7 +34,7 @@ class CustomBottomNav extends StatelessWidget {
           _buildNavItem(0, Icons.radar_rounded, 'Discover'),
           _buildNavItem(1, Icons.mic_external_on_rounded, 'Rooms'),
           _buildNavItem(2, Icons.phone_in_talk_rounded, 'Calls'),
-          _buildNavItem(3, Icons.favorite_rounded, 'Favourites'),
+          _buildNavItem(3, Icons.people_rounded, 'Friends'),
           _buildNavItem(4, Icons.person_rounded, 'Profile'),
         ],
       ),

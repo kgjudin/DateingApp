@@ -8,6 +8,8 @@ import {
   buildProfileFromSupabaseUser
 } from '../integrations/supabase/supabaseClient';
 import { config } from '../config';
+import { markUserOffline, isUserOnline } from '../sockets/socketHandler';
+import { FollowController } from './followController';
 
 export class AuthController {
   public static async register(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -165,7 +167,7 @@ export class AuthController {
           voiceIntroDuration: metadata.voiceIntroDuration,
           languages: metadata.languages,
           interests: metadata.interests,
-          status: 'online',
+          status: 'offline',
           isSuspended: false,
           createdAt: new Date().toISOString()
         };
@@ -174,7 +176,7 @@ export class AuthController {
       // Store in memory cache
       LocalDbStore.profiles.set(userId, userProfile);
       LocalDbStore.credentials.set(userId, { email: cleanEmail, password: cleanPassword });
-      LocalDbStore.presence.set(userId, { userId, status: 'online', lastSeenAt: new Date().toISOString() });
+      LocalDbStore.presence.set(userId, { userId, status: 'offline', lastSeenAt: new Date().toISOString() });
       LocalDbStore.preferences.set(userId, {
         userId,
         preferredGenders: ['everyone'],
@@ -293,7 +295,7 @@ export class AuthController {
             LocalDbStore.credentials.set(sbUser.id, { email: emailToUse, password: inputPass });
             LocalDbStore.presence.set(sbUser.id, {
               userId: sbUser.id,
-              status: 'online',
+              status: isUserOnline(sbUser.id) ? 'online' : 'offline',
               lastSeenAt: new Date().toISOString()
             });
 
@@ -352,7 +354,7 @@ export class AuthController {
 
         LocalDbStore.presence.set(foundUser.id, {
           userId: foundUser.id,
-          status: 'online',
+          status: isUserOnline(foundUser.id) ? 'online' : 'offline',
           lastSeenAt: new Date().toISOString()
         });
 
@@ -408,7 +410,9 @@ export class AuthController {
             if (usrData?.user) {
               profile = buildProfileFromSupabaseUser(usrData.user, pRow);
               LocalDbStore.profiles.set(userId, profile);
-              LocalDbStore.presence.set(userId, { userId, status: 'online', lastSeenAt: new Date().toISOString() });
+              if (!LocalDbStore.presence.has(userId)) {
+                LocalDbStore.presence.set(userId, { userId, status: isUserOnline(userId) ? 'online' : 'offline', lastSeenAt: new Date().toISOString() });
+              }
               if (!LocalDbStore.wallets.has(userId)) {
                 LocalDbStore.wallets.set(userId, { balance: 100, earned: 100, spent: 0 });
               }
@@ -444,14 +448,33 @@ export class AuthController {
       };
       const wallet = LocalDbStore.wallets.get(userId) || { balance: 100, earned: 100, spent: 0 };
 
+      const followersCount = FollowController.getFollowersCount(userId);
+      const followingCount = FollowController.getFollowingCount(userId);
+
       res.json({
         success: true,
         data: {
-          user: profile,
+          user: {
+            ...profile,
+            followersCount,
+            followingCount,
+          },
           preferences,
           wallet
         }
       });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: { message: err.message } });
+    }
+  }
+
+  public static async logout(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const userId = req.user?.id;
+      if (userId) {
+        markUserOffline(userId);
+      }
+      res.json({ success: true, message: 'Logged out successfully.' });
     } catch (err: any) {
       res.status(500).json({ success: false, error: { message: err.message } });
     }

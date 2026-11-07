@@ -1,6 +1,29 @@
 import { Response } from 'express';
 import { AuthenticatedRequest } from '../middleware/authMiddleware';
 import { LocalDbStore } from '../integrations/supabase/supabaseClient';
+import { isUserOnline, getUserPresence } from '../sockets/socketHandler';
+
+/**
+ * Universal helper to match profile gender against a filter query.
+ * Handles 'women'/'female'/'woman', 'men'/'male'/'man', 'non_binary'/'non-binary'/'other', and 'everyone'.
+ */
+export function matchGender(profileGender: any, targetFilter?: string): boolean {
+  if (!targetFilter || targetFilter === 'everyone') return true;
+  if (!profileGender) return false;
+  const pg = String(profileGender).toLowerCase().trim();
+  const tf = targetFilter.toLowerCase().trim();
+
+  if (tf === 'women' || tf === 'female' || tf === 'woman') {
+    return pg === 'female' || pg === 'women' || pg === 'woman';
+  }
+  if (tf === 'men' || tf === 'male' || tf === 'man') {
+    return pg === 'male' || pg === 'men' || pg === 'man';
+  }
+  if (tf === 'non_binary' || tf === 'non-binary' || tf === 'other') {
+    return pg === 'non_binary' || pg === 'non-binary' || pg === 'other';
+  }
+  return pg === tf;
+}
 
 export class DiscoveryController {
   public static async getDiscoveryFeed(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -15,6 +38,7 @@ export class DiscoveryController {
         discoveryEnabled: true,
       };
 
+      const requestedGender = (req.query.gender as string)?.toLowerCase().trim();
       const preferredGenders: string[] = userPrefs.preferredGenders || ['everyone'];
       const allowsEveryone = preferredGenders.includes('everyone') || preferredGenders.length === 0;
 
@@ -37,26 +61,26 @@ export class DiscoveryController {
           if (targetPrefs && targetPrefs.discoveryEnabled === false) {
             return false;
           }
-          // Gender preference filter
-          if (!allowsEveryone) {
-            const genderMatches = preferredGenders.some(g => {
-              if (g === 'men' && p.gender === 'male') return true;
-              if (g === 'women' && p.gender === 'female') return true;
-              if (g === 'non_binary' && p.gender === 'non_binary') return true;
-              return false;
-            });
+          // Gender preference filter: query parameter overrides user profile preference
+          if (requestedGender && requestedGender !== 'everyone') {
+            if (!matchGender(p.gender, requestedGender)) return false;
+          } else if (!allowsEveryone) {
+            const genderMatches = preferredGenders.some(g => matchGender(p.gender, g));
             if (!genderMatches) return false;
           }
           return true;
         })
         .map(p => {
-          const presence = LocalDbStore.presence.get(p.id) || { status: 'offline' };
+          const presenceInfo = getUserPresence(p.id);
+          const currentStatus = presenceInfo.status;
+          const isOnline = presenceInfo.isOnline;
           const sharedInterests = (p.interests || []).filter((item: string) => myInterests.includes(item));
           const isFavourite = LocalDbStore.favourites.has(`${currentUserId}:${p.id}`);
 
           return {
             ...p,
-            status: presence.status,
+            status: currentStatus,
+            isOnline,
             sharedInterests,
             sharedInterestsCount: sharedInterests.length,
             isFavourite,
@@ -64,7 +88,7 @@ export class DiscoveryController {
         });
 
       // Sections
-      const onlineNow = eligibleUsers.filter(u => u.status === 'online');
+      const onlineNow = eligibleUsers.filter(u => u.isOnline || u.status === 'online' || u.status === 'in_call' || u.status === 'in_room');
       const basedOnInterests = [...eligibleUsers].sort((a, b) => b.sharedInterestsCount - a.sharedInterestsCount);
       const peopleYouMayLike = [...eligibleUsers].reverse();
       const newPeople = [...eligibleUsers];
@@ -104,7 +128,7 @@ export class DiscoveryController {
             const matchBio = p.bio?.toLowerCase().includes(q);
             if (!matchName && !matchBio) return false;
           }
-          if (gender && gender !== 'everyone' && p.gender !== gender) {
+          if (gender && gender !== 'everyone' && !matchGender(p.gender, gender as string)) {
             return false;
           }
           if (interest && (!p.interests || !p.interests.includes(interest))) {
@@ -113,11 +137,12 @@ export class DiscoveryController {
           return true;
         })
         .map(p => {
-          const presence = LocalDbStore.presence.get(p.id) || { status: 'offline' };
+          const presence = getUserPresence(p.id);
           const isFavourite = LocalDbStore.favourites.has(`${currentUserId}:${p.id}`);
           return {
             ...p,
             status: presence.status,
+            isOnline: presence.isOnline,
             isFavourite
           };
         });

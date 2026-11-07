@@ -1,0 +1,10 @@
+{
+  "follows": [
+    "test_online_user:test_target_user",
+    "test_offline_user:test_target_user"
+  ],
+  "favourites": [],
+  "notifications": [],
+  "wallets": [],
+  "userBlocks": []
+}
