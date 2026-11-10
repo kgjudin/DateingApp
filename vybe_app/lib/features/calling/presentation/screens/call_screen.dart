@@ -271,8 +271,8 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                 TextButton(
                   onPressed: () {
                     Navigator.pop(ctx);
-                    if (context.mounted && Navigator.canPop(context)) {
-                      context.pop();
+                    if (context.mounted) {
+                      context.go('/home');
                     }
                   },
                   child: const Text('Done', style: TextStyle(color: AppColors.textSecondary, fontSize: 14, fontWeight: FontWeight.w600)),
@@ -298,15 +298,33 @@ class _CallScreenState extends ConsumerState<CallScreen> {
       _checkFollowStatus(peerId);
     }
 
-    // When call ends, show the Post-Call Follow Dialog
+    // When call ends, either show post-call follow dialog (if conversation took place)
+    // or navigate directly to /home (if unanswered/no response/declined).
     if (callingState.status == CallStatus.ended) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _showPostCallDialog(peer, callingState.durationSeconds);
+        if (!_hasShownEndDialog) {
+          _hasShownEndDialog = true;
+          if (callingState.durationSeconds > 0) {
+            _showPostCallDialog(peer, callingState.durationSeconds);
+          } else {
+            final msg = callingState.errorMessage ?? 'No response';
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                backgroundColor: AppColors.cardBackground,
+                content: Text(msg, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                duration: const Duration(seconds: 2),
+              ),
+            );
+            if (context.mounted) {
+              context.go('/home');
+            }
+          }
+        }
       });
     } else if (callingState.status == CallStatus.idle && !_hasShownEndDialog) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (context.mounted && Navigator.canPop(context)) {
-          context.pop();
+        if (context.mounted) {
+          context.go('/home');
         }
       });
     }
@@ -355,9 +373,7 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                           borderRadius: BorderRadius.circular(20),
                           onTap: () {
                             ref.read(callingControllerProvider.notifier).setCallScreenVisible(false);
-                            if (Navigator.canPop(context)) {
-                              context.pop();
-                            } else {
+                            if (context.mounted) {
                               context.go('/home');
                             }
                           },
@@ -402,9 +418,10 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                             ),
                             const SizedBox(width: 8),
                             Text(
-                              callingState.status == CallStatus.connected
-                                  ? 'Connected'
-                                  : (callingState.status == CallStatus.ringing ? 'Ringing...' : 'Calling...'),
+                              callingState.errorMessage ??
+                                  (callingState.status == CallStatus.connected
+                                      ? 'Connected'
+                                      : (callingState.status == CallStatus.ringing ? 'Ringing...' : 'Calling...')),
                               style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
                             ),
                           ],
@@ -577,7 +594,12 @@ class _CallScreenState extends ConsumerState<CallScreen> {
 
                         // End Call Button
                         GestureDetector(
-                          onTap: () => ref.read(callingControllerProvider.notifier).endCall(),
+                          onTap: () {
+                            ref.read(callingControllerProvider.notifier).endCall(reason: 'ended');
+                            if (context.mounted) {
+                              context.go('/home');
+                            }
+                          },
                           child: Container(
                             width: 58,
                             height: 58,

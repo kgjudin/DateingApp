@@ -65,7 +65,7 @@
     [
       "1b392b7e-acc2-4ff7-b792-51b09c5a255d",
       {
-        "balance": 7200,
+        "balance": 8200,
         "earned": 100,
         "spent": 0
       }
@@ -80,5 +80,42 @@
     ]
   ],
   "userBlocks": [],
-  "callHistory": []
+  "callHistory": [
+    {
+      "callId": "call_1794330367352_vdb10",
+      "callerId": "1b392b7e-acc2-4ff7-b792-51b09c5a255d",
+      "receiverId": "1546edf9-3c3a-43dc-bc7c-93be4f54b87c",
+      "callerName": "JD Creations",
+      "callerAvatar": "https://api.dicebear.com/7.x/avataaars/svg?seed=judin",
+      "receiverName": "kochumutta",
+      "receiverAvatar": "https://api.dicebear.com/7.x/avataaars/svg?seed=kochmutta",
+      "status": "ended",
+      "duration": 7,
+      "createdAt": "2026-11-10T17:06:24.658Z",
+      "id": "hist_1794330384659_receiver",
+      "userId": "1546edf9-3c3a-43dc-bc7c-93be4f54b87c",
+      "direction": "incoming",
+      "peerName": "JD Creations",
+      "peerAvatar": "https://api.dicebear.com/7.x/avataaars/svg?seed=judin",
+      "peerId": "1b392b7e-acc2-4ff7-b792-51b09c5a255d"
+    },
+    {
+      "callId": "call_1794330367352_vdb10",
+      "callerId": "1b392b7e-acc2-4ff7-b792-51b09c5a255d",
+      "receiverId": "1546edf9-3c3a-43dc-bc7c-93be4f54b87c",
+      "callerName": "JD Creations",
+      "callerAvatar": "https://api.dicebear.com/7.x/avataaars/svg?seed=judin",
+      "receiverName": "kochumutta",
+      "receiverAvatar": "https://api.dicebear.com/7.x/avataaars/svg?seed=kochmutta",
+      "status": "ended",
+      "duration": 7,
+      "createdAt": "2026-11-10T17:06:24.658Z",
+      "id": "hist_1794330384659_caller",
+      "userId": "1b392b7e-acc2-4ff7-b792-51b09c5a255d",
+      "direction": "outgoing",
+      "peerName": "kochumutta",
+      "peerAvatar": "https://api.dicebear.com/7.x/avataaars/svg?seed=kochmutta",
+      "peerId": "1546edf9-3c3a-43dc-bc7c-93be4f54b87c"
+    }
+  ]
 }

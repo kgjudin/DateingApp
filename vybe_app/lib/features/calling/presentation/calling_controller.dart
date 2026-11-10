@@ -86,7 +86,7 @@ final callHistoryVersionProvider = StateProvider<int>((ref) => 0);
 class CallingController extends StateNotifier<CallingState> {
   final Ref _ref;
   Timer? _callDurationTimer;
-  Timer? _autoConnectTimer;
+  Timer? _ringTimeoutTimer;
   StreamSubscription? _socketCallAcceptedSub;
   StreamSubscription? _socketCallEndedSub;
   StreamSubscription? _socketCallDeclinedSub;
@@ -101,6 +101,8 @@ class CallingController extends StateNotifier<CallingState> {
     _socketCallAcceptedSub = socket.onCallAccepted.listen((data) {
       if (state.status == CallStatus.ringing || state.status == CallStatus.connecting || state.status == CallStatus.initiating) {
         debugPrint('[Calling] Socket event: Call accepted by peer!');
+        _ringTimeoutTimer?.cancel();
+        _ringTimeoutTimer = null;
         if (data['receiver'] != null && data['receiver'] is Map) {
           final rMap = Map<String, dynamic>.from(data['receiver']);
           final rId = rMap['id']?.toString() ?? state.peerId;
@@ -118,12 +120,17 @@ class CallingController extends StateNotifier<CallingState> {
 
     _socketCallEndedSub = socket.onCallEnded.listen((data) {
       debugPrint('[Calling] Socket event: Call ended by peer');
-      endCall();
+      _ringTimeoutTimer?.cancel();
+      _ringTimeoutTimer = null;
+      endCall(reason: 'ended');
     });
 
     _socketCallDeclinedSub = socket.onCallDeclined.listen((data) {
       debugPrint('[Calling] Socket event: Call declined by peer');
-      endCall();
+      _ringTimeoutTimer?.cancel();
+      _ringTimeoutTimer = null;
+      state = state.copyWith(errorMessage: 'Call declined');
+      endCall(reason: 'declined');
     });
   }
 
@@ -131,7 +138,8 @@ class CallingController extends StateNotifier<CallingState> {
     required String receiverId,
     required Map<String, dynamic> receiverProfile,
   }) async {
-    _autoConnectTimer?.cancel();
+    _ringTimeoutTimer?.cancel();
+    _ringTimeoutTimer = null;
     final profileWithId = {
       'id': receiverId,
       ...receiverProfile,
@@ -169,6 +177,7 @@ class CallingController extends StateNotifier<CallingState> {
           agoraToken: token,
           appId: appId,
           peerProfile: resolvedReceiver,
+          errorMessage: null,
         );
 
         // Join Agora voice channel
@@ -183,31 +192,28 @@ class CallingController extends StateNotifier<CallingState> {
           debugPrint('[Calling] Agora join notice: $agoraErr');
         }
 
-        // Auto-connect timer: If remote user hasn't answered via socket within 3.5s,
-        // automatically connect the voice call so the user can speak and experience the call!
-        _autoConnectTimer?.cancel();
-        _autoConnectTimer = Timer(const Duration(milliseconds: 3500), () {
+        // Ringing timeout timer: Wait up to 20s for the other user to answer.
+        // If not answered within 20s, terminate call with "No response".
+        _ringTimeoutTimer?.cancel();
+        _ringTimeoutTimer = Timer(const Duration(seconds: 20), () {
           if (state.status == CallStatus.ringing || state.status == CallStatus.initiating) {
-            debugPrint('[Calling] Auto-connecting voice call session');
-            _onCallConnected();
+            debugPrint('[Calling] Ring timed out after 20s - No response');
+            state = state.copyWith(errorMessage: 'No response');
+            endCall(reason: 'no_response');
           }
         });
         return;
+      } else {
+        final msg = (res is Map && res['error'] != null && res['error'] is Map)
+            ? res['error']['message']?.toString()
+            : 'No response';
+        state = state.copyWith(errorMessage: msg ?? 'No response');
+        endCall(reason: 'no_response');
       }
     } catch (e) {
-      debugPrint('[Calling] Start call notice: $e');
-      state = state.copyWith(
-        status: CallStatus.ringing,
-        peerId: receiverId,
-        callId: 'call_${DateTime.now().millisecondsSinceEpoch}',
-        channelName: 'vybe_channel_${DateTime.now().millisecondsSinceEpoch}',
-      );
-      _autoConnectTimer?.cancel();
-      _autoConnectTimer = Timer(const Duration(milliseconds: 3000), () {
-        if (state.status == CallStatus.ringing || state.status == CallStatus.initiating) {
-          _onCallConnected();
-        }
-      });
+      debugPrint('[Calling] Start call error: $e');
+      state = state.copyWith(errorMessage: 'No response');
+      endCall(reason: 'no_response');
     }
   }
 
@@ -218,7 +224,8 @@ class CallingController extends StateNotifier<CallingState> {
     required String appId,
     required Map<String, dynamic> callerProfile,
   }) async {
-    _autoConnectTimer?.cancel();
+    _ringTimeoutTimer?.cancel();
+    _ringTimeoutTimer = null;
     final cId = callerProfile['id']?.toString() ?? callerProfile['userId']?.toString() ?? '';
     state = state.copyWith(
       status: CallStatus.connecting,
@@ -251,13 +258,14 @@ class CallingController extends StateNotifier<CallingState> {
       }
       _onCallConnected();
     } catch (e) {
-      _onCallConnected();
+      debugPrint('[Calling] Accept call error: $e');
+      endCall(reason: 'failed');
     }
   }
 
   void _onCallConnected() {
-    _autoConnectTimer?.cancel();
-    _autoConnectTimer = null;
+    _ringTimeoutTimer?.cancel();
+    _ringTimeoutTimer = null;
     state = state.copyWith(status: CallStatus.connected);
     _startDurationTimer();
   }
@@ -342,9 +350,9 @@ class CallingController extends StateNotifier<CallingState> {
     }
   }
 
-  Future<void> endCall() async {
-    _autoConnectTimer?.cancel();
-    _autoConnectTimer = null;
+  Future<void> endCall({String reason = 'ended'}) async {
+    _ringTimeoutTimer?.cancel();
+    _ringTimeoutTimer = null;
     _callDurationTimer?.cancel();
     _callDurationTimer = null;
 
@@ -355,7 +363,9 @@ class CallingController extends StateNotifier<CallingState> {
         state.peerProfile?['username']?.toString() ??
         'User';
     final peerAvatar = state.peerProfile?['avatarUrl']?.toString() ?? '';
-    final status = duration > 0 ? 'ended' : 'ended';
+    final status = duration > 0
+        ? 'ended'
+        : (reason == 'declined' ? 'rejected' : (reason == 'no_response' ? 'missed' : 'missed'));
 
     // Optimistically cache locally so the call shows up immediately in history
     if (peerId.isNotEmpty) {
@@ -376,23 +386,29 @@ class CallingController extends StateNotifier<CallingState> {
         'peerId': peerId,
         'peerName': peerName,
         'peerAvatar': peerAvatar,
+        'reason': reason,
       });
     } catch (_) {}
 
-    await _ref.read(agoraVoiceServiceProvider).leaveChannel();
+    try {
+      await _ref.read(agoraVoiceServiceProvider).leaveChannel();
+    } catch (_) {}
 
-    state = state.copyWith(status: CallStatus.ended);
+    state = state.copyWith(
+      status: CallStatus.ended,
+      errorMessage: state.errorMessage ?? (reason == 'no_response' ? 'No response' : (reason == 'declined' ? 'Call declined' : null)),
+    );
     // Notify all listeners that a call was ended and history has updated
     _ref.read(callHistoryVersionProvider.notifier).state++;
 
-    Future.delayed(const Duration(milliseconds: 500), () {
+    Future.delayed(const Duration(milliseconds: 300), () {
       state = CallingState();
     });
   }
 
   @override
   void dispose() {
-    _autoConnectTimer?.cancel();
+    _ringTimeoutTimer?.cancel();
     _callDurationTimer?.cancel();
     _socketCallAcceptedSub?.cancel();
     _socketCallEndedSub?.cancel();

@@ -225,6 +225,9 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
                       data['callId'] ?? '',
                       (data['caller'] as Map?) != null ? Map<String, dynamic>.from(data['caller']) : null,
                     );
+                if (mounted) {
+                  context.go('/home');
+                }
               },
             );
           },
