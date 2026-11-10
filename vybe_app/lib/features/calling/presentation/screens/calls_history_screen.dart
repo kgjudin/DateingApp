@@ -1,6 +1,9 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../../../core/constants/app_constants.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/glass_container.dart';
@@ -22,16 +25,39 @@ class _CallsHistoryScreenState extends ConsumerState<CallsHistoryScreen> {
   @override
   void initState() {
     super.initState();
+    _loadCachedHistory();
     _fetchHistory();
+  }
+
+  Future<void> _loadCachedHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final myId = ref.read(authControllerProvider).user?['id']?.toString() ?? prefs.getString(AppConstants.userIdKey);
+      if (myId == null || myId.isEmpty) return;
+
+      final key = 'call_history_$myId';
+      final raw = prefs.getString(key);
+      if (raw != null && raw.isNotEmpty && mounted) {
+        final decoded = jsonDecode(raw);
+        if (decoded is List && decoded.isNotEmpty) {
+          setState(() {
+            _history = decoded;
+            _isLoading = false;
+          });
+        }
+      }
+    } catch (_) {}
   }
 
   Future<void> _fetchHistory() async {
     final auth = ref.read(authControllerProvider);
     if (!auth.isAuthenticated) {
-      setState(() {
-        _history = [];
-        _isLoading = false;
-      });
+      if (!auth.isLoading) {
+        setState(() {
+          _history = [];
+          _isLoading = false;
+        });
+      }
       return;
     }
     try {
@@ -58,8 +84,20 @@ class _CallsHistoryScreenState extends ConsumerState<CallsHistoryScreen> {
           }
           final cId = item['callerId']?.toString().toLowerCase();
           final rId = item['receiverId']?.toString().toLowerCase();
-          return (cId != null && cId == myId) || (rId != null && rId == myId);
+          if (cId != null && rId != null && myId != null) {
+            return cId == myId || rId == myId;
+          }
+          // Default to true if already filtered by server
+          return true;
         }).toList();
+
+        // Cache locally for offline and instant-resume
+        try {
+          if (myId != null && myId.isNotEmpty) {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setString('call_history_$myId', jsonEncode(filtered));
+          }
+        } catch (_) {}
 
         setState(() {
           _history = filtered;
@@ -72,7 +110,6 @@ class _CallsHistoryScreenState extends ConsumerState<CallsHistoryScreen> {
 
     if (mounted) {
       setState(() {
-        _history = [];
         _isLoading = false;
       });
     }
@@ -162,7 +199,20 @@ class _CallsHistoryScreenState extends ConsumerState<CallsHistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final myId = ref.read(authControllerProvider).user?['id']?.toString().toLowerCase();
+    final myId = ref.watch(authControllerProvider).user?['id']?.toString().toLowerCase();
+
+    // Auto-refresh when auth session finishes loading or user logs in
+    ref.listen<AuthState>(authControllerProvider, (previous, next) {
+      if (next.isAuthenticated && (previous == null || !previous.isAuthenticated)) {
+        _loadCachedHistory();
+        _fetchHistory();
+      }
+    });
+
+    // Auto-refresh whenever a call completes or is declined
+    ref.listen<int>(callHistoryVersionProvider, (prev, next) {
+      _fetchHistory();
+    });
 
     return Scaffold(
       backgroundColor: AppColors.primaryBackground,

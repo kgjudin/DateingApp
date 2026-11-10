@@ -27,13 +27,27 @@ export class LocalDbStore {
   public static credentials: Map<string, { email: string; password: string }> = new Map();
 
   private static getStoreFilePath(): string {
-    const dataDir = path.join(process.cwd(), 'data');
-    if (!fs.existsSync(dataDir)) {
+    const candidateDirs = [
+      path.join(process.cwd(), 'data'),
+      path.join(process.cwd(), 'backend', 'data'),
+      path.resolve(__dirname, '../../../data'),
+      path.resolve(__dirname, '../../data'),
+    ];
+    for (const dir of candidateDirs) {
+      const candidateFile = path.join(dir, 'local_db.json');
+      if (fs.existsSync(candidateFile)) {
+        return candidateFile;
+      }
+    }
+    const defaultDir = fs.existsSync(path.join(process.cwd(), 'backend'))
+      ? path.join(process.cwd(), 'backend', 'data')
+      : path.join(process.cwd(), 'data');
+    if (!fs.existsSync(defaultDir)) {
       try {
-        fs.mkdirSync(dataDir, { recursive: true });
+        fs.mkdirSync(defaultDir, { recursive: true });
       } catch (_) {}
     }
-    return path.join(dataDir, 'local_db.json');
+    return path.join(defaultDir, 'local_db.json');
   }
 
   public static saveToDisk(): void {
@@ -44,8 +58,10 @@ export class LocalDbStore {
         favourites: Array.from(this.favourites),
         notifications: this.notifications,
         wallets: Array.from(this.wallets.entries()),
+        walletTransactions: this.walletTransactions.slice(0, 1000),
+        giftTransactions: this.giftTransactions.slice(0, 500),
         userBlocks: Array.from(this.userBlocks),
-        callHistory: this.callHistory.slice(0, 200)
+        callHistory: this.callHistory.slice(0, 500)
       };
       fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), 'utf-8');
     } catch (e: any) {
@@ -77,6 +93,12 @@ export class LocalDbStore {
           this.wallets.set(k, v);
         }
       }
+      if (Array.isArray(data.walletTransactions)) {
+        this.walletTransactions = data.walletTransactions;
+      }
+      if (Array.isArray(data.giftTransactions)) {
+        this.giftTransactions = data.giftTransactions;
+      }
       if (Array.isArray(data.userBlocks)) {
         for (const item of data.userBlocks) {
           this.userBlocks.add(item);
@@ -85,7 +107,7 @@ export class LocalDbStore {
       if (Array.isArray(data.callHistory)) {
         this.callHistory = data.callHistory;
       }
-      console.log(`[LocalDbStore] Restored ${this.follows.size} follow(s), ${this.notifications.length} notification(s), and ${this.callHistory.length} call history record(s) from disk.`);
+      console.log(`[LocalDbStore] Restored ${this.wallets.size} wallet(s), ${this.walletTransactions.length} transaction(s), and ${this.callHistory.length} call history record(s) from disk.`);
     } catch (e: any) {
       console.warn('[LocalDbStore] Error loading from disk:', e.message);
     }

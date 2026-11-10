@@ -10,6 +10,7 @@ import {
 import { config } from '../config';
 import { markUserOffline, isUserOnline } from '../sockets/socketHandler';
 import { FollowController } from './followController';
+import { WalletService } from './giftController';
 
 export class AuthController {
   public static async register(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -186,7 +187,7 @@ export class AuthController {
         showAge: true,
         showLocation: true
       });
-      LocalDbStore.wallets.set(userId, { balance: 100, earned: 100, spent: 0 });
+      const wallet = await WalletService.getWallet(userId);
 
       // Generate JWT if not already provided by Supabase
       if (!sessionToken) {
@@ -202,7 +203,7 @@ export class AuthController {
         data: {
           token: sessionToken,
           user: userProfile,
-          wallet: { balance: 100, earned: 100, spent: 0 }
+          wallet
         }
       });
     } catch (err: any) {
@@ -311,9 +312,7 @@ export class AuthController {
               });
             }
 
-            if (!LocalDbStore.wallets.has(sbUser.id)) {
-              LocalDbStore.wallets.set(sbUser.id, { balance: 100, earned: 100, spent: 0 });
-            }
+            const wallet = await WalletService.getWallet(sbUser.id);
 
             const token = signInData.session?.access_token || jwt.sign(
               { sub: sbUser.id, id: sbUser.id, email: sbUser.email, username: finalProfile.username, displayName: finalProfile.displayName, role: 'user' },
@@ -326,7 +325,7 @@ export class AuthController {
               data: {
                 token,
                 user: finalProfile,
-                wallet: LocalDbStore.wallets.get(sbUser.id) || { balance: 100, earned: 100, spent: 0 }
+                wallet
               }
             });
             return;
@@ -446,7 +445,7 @@ export class AuthController {
         showAge: true,
         showLocation: true
       };
-      const wallet = LocalDbStore.wallets.get(userId) || { balance: 100, earned: 100, spent: 0 };
+      const wallet = await WalletService.getWallet(userId);
 
       const followersCount = FollowController.getFollowersCount(userId);
       const followingCount = FollowController.getFollowingCount(userId);

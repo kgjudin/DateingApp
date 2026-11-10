@@ -5,6 +5,93 @@
   ],
   "favourites": [],
   "notifications": [],
-  "wallets": [],
-  "userBlocks": []
+  "wallets": [
+    [
+      "2aa936a6-473d-40ab-b40d-60f5a1b195b3",
+      {
+        "balance": 100,
+        "earned": 100,
+        "spent": 0
+      }
+    ],
+    [
+      "1546edf9-3c3a-43dc-bc7c-93be4f54b87c",
+      {
+        "balance": 100,
+        "earned": 100,
+        "spent": 0
+      }
+    ],
+    [
+      "190748ff-540a-47ad-80d0-b73f52723f79",
+      {
+        "balance": 100,
+        "earned": 100,
+        "spent": 0
+      }
+    ],
+    [
+      "872a2abe-7cf2-41c1-a68d-380c6e7fc7df",
+      {
+        "balance": 100,
+        "earned": 100,
+        "spent": 0
+      }
+    ],
+    [
+      "3f0d6a41-59c4-4b11-9c86-d86a7b701507",
+      {
+        "balance": 100,
+        "earned": 100,
+        "spent": 0
+      }
+    ],
+    [
+      "1452cdba-2b15-4efd-8fe7-e0dfe559fa5f",
+      {
+        "balance": 100,
+        "earned": 100,
+        "spent": 0
+      }
+    ],
+    [
+      "1b8410ef-f5d5-4476-b37c-8f39ed927f34",
+      {
+        "balance": 100,
+        "earned": 100,
+        "spent": 0
+      }
+    ],
+    [
+      "1b392b7e-acc2-4ff7-b792-51b09c5a255d",
+      {
+        "balance": 700,
+        "earned": 700,
+        "spent": 0
+      }
+    ],
+    [
+      "b3d40b7b-124f-41e4-9afa-9cfe6333292c",
+      {
+        "balance": 100,
+        "earned": 100,
+        "spent": 0
+      }
+    ]
+  ],
+  "walletTransactions": [
+    {
+      "id": "wtx_crd_1794329399637_imgv",
+      "userId": "1b392b7e-acc2-4ff7-b792-51b09c5a255d",
+      "amount": 200,
+      "balanceAfter": 700,
+      "type": "recharge",
+      "description": "Recharged 200 coins test",
+      "referenceId": "ref_1794329399637",
+      "createdAt": "2026-11-10T16:49:59.637Z"
+    }
+  ],
+  "giftTransactions": [],
+  "userBlocks": [],
+  "callHistory": []
 }

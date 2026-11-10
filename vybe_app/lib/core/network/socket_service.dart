@@ -14,6 +14,7 @@ class SocketService {
   final _incomingCallController = StreamController<Map<String, dynamic>>.broadcast();
   final _callAcceptedController = StreamController<Map<String, dynamic>>.broadcast();
   final _callEndedController = StreamController<Map<String, dynamic>>.broadcast();
+  final _callDeclinedController = StreamController<Map<String, dynamic>>.broadcast();
   final _liveGiftController = StreamController<Map<String, dynamic>>.broadcast();
   final _giftReceivedController = StreamController<Map<String, dynamic>>.broadcast();
   final _walletUpdatedController = StreamController<Map<String, dynamic>>.broadcast();
@@ -35,6 +36,7 @@ class SocketService {
   Stream<Map<String, dynamic>> get onIncomingCall => _incomingCallController.stream;
   Stream<Map<String, dynamic>> get onCallAccepted => _callAcceptedController.stream;
   Stream<Map<String, dynamic>> get onCallEnded => _callEndedController.stream;
+  Stream<Map<String, dynamic>> get onCallDeclined => _callDeclinedController.stream;
   Stream<Map<String, dynamic>> get onLiveGift => _liveGiftController.stream;
   Stream<Map<String, dynamic>> get onGiftReceived => _giftReceivedController.stream;
   Stream<Map<String, dynamic>> get onWalletUpdated => _walletUpdatedController.stream;
@@ -106,6 +108,12 @@ class SocketService {
       _socket!.on('call_ended', (data) {
         if (data is Map) {
           _callEndedController.add(Map<String, dynamic>.from(data));
+        }
+      });
+
+      _socket!.on('call_declined', (data) {
+        if (data is Map) {
+          _callDeclinedController.add(Map<String, dynamic>.from(data));
         }
       });
 

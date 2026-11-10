@@ -115,11 +115,16 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
       appBar: AppBar(
         title: const Text('My Coin Wallet', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 20)),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+      body: RefreshIndicator(
+        onRefresh: _fetchWalletData,
+        color: AppColors.primaryAccent,
+        backgroundColor: AppColors.secondaryBackground,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
             // HERO BALANCE CARD
             Container(
               padding: const EdgeInsets.all(24),
@@ -305,8 +310,9 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
           ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildPackageCard(int coins, String price, String label, {bool isPopular = false}) {
     return GestureDetector(

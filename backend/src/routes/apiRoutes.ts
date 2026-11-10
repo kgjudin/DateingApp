@@ -85,7 +85,11 @@ router.post('/gifts/send', authenticateJwt, GiftController.sendGift);
 router.get('/gifts/received', authenticateJwt, GiftController.getReceivedGifts);
 router.get('/gifts/sent', authenticateJwt, GiftController.getSentGifts);
 router.get('/wallet', authenticateJwt, WalletController.getWallet);
+router.get('/wallet/balance', authenticateJwt, WalletController.getBalance);
 router.post('/wallet/purchase', authenticateJwt, WalletController.purchaseCoins);
+router.post('/wallet/recharge', authenticateJwt, WalletController.purchaseCoins);
+router.post('/wallet/deduct', authenticateJwt, WalletController.deductCoins);
+router.post('/wallet/spend', authenticateJwt, WalletController.deductCoins);
 
 // Chat & Moderation
 router.get('/chat/conversations', authenticateJwt, ChatController.getConversations);

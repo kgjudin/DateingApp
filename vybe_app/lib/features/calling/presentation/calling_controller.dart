@@ -1,6 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../../core/constants/app_constants.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/socket_service.dart';
 import '../../../core/voice/agora_voice_service.dart';
@@ -78,12 +81,15 @@ final callingControllerProvider = StateNotifierProvider<CallingController, Calli
   return CallingController(ref);
 });
 
+final callHistoryVersionProvider = StateProvider<int>((ref) => 0);
+
 class CallingController extends StateNotifier<CallingState> {
   final Ref _ref;
   Timer? _callDurationTimer;
   Timer? _autoConnectTimer;
   StreamSubscription? _socketCallAcceptedSub;
   StreamSubscription? _socketCallEndedSub;
+  StreamSubscription? _socketCallDeclinedSub;
 
   CallingController(this._ref) : super(CallingState()) {
     _listenToSocketEvents();
@@ -112,6 +118,11 @@ class CallingController extends StateNotifier<CallingState> {
 
     _socketCallEndedSub = socket.onCallEnded.listen((data) {
       debugPrint('[Calling] Socket event: Call ended by peer');
+      endCall();
+    });
+
+    _socketCallDeclinedSub = socket.onCallDeclined.listen((data) {
+      debugPrint('[Calling] Socket event: Call declined by peer');
       endCall();
     });
   }
@@ -272,6 +283,65 @@ class CallingController extends StateNotifier<CallingState> {
     state = state.copyWith(isSpeakerOn: _ref.read(agoraVoiceServiceProvider).isSpeakerOn);
   }
 
+  Future<void> declineCall(String callId, [Map<String, dynamic>? callerProfile]) async {
+    try {
+      final callerId = callerProfile?['id']?.toString() ?? callerProfile?['userId']?.toString();
+      await _ref.read(apiClientProvider).post('/calls/decline', body: {
+        'callId': callId,
+        'callerId': callerId,
+        'callerProfile': callerProfile,
+        'reason': 'declined',
+      });
+    } catch (e) {
+      debugPrint('[Calling] Decline call error: $e');
+    } finally {
+      // Trigger instant refresh of history
+      _ref.read(callHistoryVersionProvider.notifier).state++;
+    }
+  }
+
+  Future<void> _cacheCallLocally({
+    required String? callId,
+    required String peerId,
+    required String peerName,
+    required String peerAvatar,
+    required int duration,
+    required String status,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final myId = prefs.getString(AppConstants.userIdKey);
+      if (myId == null || myId.isEmpty) return;
+
+      final key = 'call_history_$myId';
+      final existingRaw = prefs.getString(key);
+      List<dynamic> list = [];
+      if (existingRaw != null && existingRaw.isNotEmpty) {
+        try {
+          list = jsonDecode(existingRaw) as List<dynamic>;
+        } catch (_) {}
+      }
+
+      final newRecord = {
+        'id': 'hist_${DateTime.now().millisecondsSinceEpoch}',
+        'callId': callId ?? 'call_${DateTime.now().millisecondsSinceEpoch}',
+        'userId': myId,
+        'peerId': peerId,
+        'peerName': peerName,
+        'peerAvatar': peerAvatar,
+        'direction': 'outgoing',
+        'status': status,
+        'duration': duration,
+        'createdAt': DateTime.now().toIso8601String(),
+      };
+
+      list = [newRecord, ...list.where((c) => c is Map && c['callId'] != newRecord['callId'])].take(100).toList();
+      await prefs.setString(key, jsonEncode(list));
+    } catch (e) {
+      debugPrint('[Calling] Error caching call locally: $e');
+    }
+  }
+
   Future<void> endCall() async {
     _autoConnectTimer?.cancel();
     _autoConnectTimer = null;
@@ -280,19 +350,41 @@ class CallingController extends StateNotifier<CallingState> {
 
     final callId = state.callId;
     final duration = state.durationSeconds;
+    final peerId = state.activePeerId;
+    final peerName = state.peerProfile?['displayName']?.toString() ??
+        state.peerProfile?['username']?.toString() ??
+        'User';
+    final peerAvatar = state.peerProfile?['avatarUrl']?.toString() ?? '';
+    final status = duration > 0 ? 'ended' : 'ended';
+
+    // Optimistically cache locally so the call shows up immediately in history
+    if (peerId.isNotEmpty) {
+      _cacheCallLocally(
+        callId: callId,
+        peerId: peerId,
+        peerName: peerName,
+        peerAvatar: peerAvatar,
+        duration: duration,
+        status: status,
+      );
+    }
 
     try {
-      if (callId != null) {
-        await _ref.read(apiClientProvider).post('/calls/end', body: {
-          'callId': callId,
-          'durationSeconds': duration,
-        });
-      }
+      await _ref.read(apiClientProvider).post('/calls/end', body: {
+        'callId': callId,
+        'durationSeconds': duration,
+        'peerId': peerId,
+        'peerName': peerName,
+        'peerAvatar': peerAvatar,
+      });
     } catch (_) {}
 
     await _ref.read(agoraVoiceServiceProvider).leaveChannel();
 
     state = state.copyWith(status: CallStatus.ended);
+    // Notify all listeners that a call was ended and history has updated
+    _ref.read(callHistoryVersionProvider.notifier).state++;
+
     Future.delayed(const Duration(milliseconds: 500), () {
       state = CallingState();
     });
@@ -304,6 +396,7 @@ class CallingController extends StateNotifier<CallingState> {
     _callDurationTimer?.cancel();
     _socketCallAcceptedSub?.cancel();
     _socketCallEndedSub?.cancel();
+    _socketCallDeclinedSub?.cancel();
     super.dispose();
   }
 }

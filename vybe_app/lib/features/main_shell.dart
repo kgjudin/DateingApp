@@ -179,35 +179,55 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
     // as requested by the user, without any bottom popup interrupting the user.
   }
 
+  BuildContext? _incomingCallDialogContext;
+
   void _listenForIncomingCalls() {
     final socket = ref.read(socketServiceProvider);
+
+    socket.onCallEnded.listen((_) {
+      if (_incomingCallDialogContext != null && mounted) {
+        try {
+          Navigator.of(_incomingCallDialogContext!).pop();
+        } catch (_) {}
+        _incomingCallDialogContext = null;
+      }
+    });
+
     socket.onIncomingCall.listen((data) {
       if (mounted) {
         showDialog(
           context: context,
           barrierDismissible: false,
-          builder: (ctx) => IncomingCallDialog(
-            caller: (data['caller'] as Map?) != null
-                ? Map<String, dynamic>.from(data['caller'])
-                : {'displayName': 'Vybe Caller', 'location': 'Voice Connection'},
-            onAccept: () {
-              Navigator.pop(ctx);
-              ref.read(callingControllerProvider.notifier).acceptCall(
-                    callId: data['callId'] ?? '',
-                    channelName: data['channelName'] ?? '',
-                    token: data['token'] ?? '',
-                    appId: data['appId'] ?? '',
-                    callerProfile: Map<String, dynamic>.from(data['caller'] ?? {}),
-                  );
-              if (mounted) {
-                context.push('/calling');
-              }
-            },
-            onDecline: () {
-              Navigator.pop(ctx);
-              ref.read(callingControllerProvider.notifier).endCall();
-            },
-          ),
+          builder: (ctx) {
+            _incomingCallDialogContext = ctx;
+            return IncomingCallDialog(
+              caller: (data['caller'] as Map?) != null
+                  ? Map<String, dynamic>.from(data['caller'])
+                  : {'displayName': 'Vybe Caller', 'location': 'Voice Connection'},
+              onAccept: () {
+                _incomingCallDialogContext = null;
+                Navigator.pop(ctx);
+                ref.read(callingControllerProvider.notifier).acceptCall(
+                      callId: data['callId'] ?? '',
+                      channelName: data['channelName'] ?? '',
+                      token: data['token'] ?? '',
+                      appId: data['appId'] ?? '',
+                      callerProfile: Map<String, dynamic>.from(data['caller'] ?? {}),
+                    );
+                if (mounted) {
+                  context.push('/calling');
+                }
+              },
+              onDecline: () {
+                _incomingCallDialogContext = null;
+                Navigator.pop(ctx);
+                ref.read(callingControllerProvider.notifier).declineCall(
+                      data['callId'] ?? '',
+                      (data['caller'] as Map?) != null ? Map<String, dynamic>.from(data['caller']) : null,
+                    );
+              },
+            );
+          },
         );
       }
     });
@@ -232,7 +252,13 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
             right: 0,
             child: CustomBottomNav(
               currentIndex: _currentIndex,
-              onTap: (index) => setState(() => _currentIndex = index),
+              onTap: (index) {
+                if (index == 2 && _currentIndex != 2) {
+                  // Trigger refresh when navigating to call history tab
+                  ref.read(callHistoryVersionProvider.notifier).state++;
+                }
+                setState(() => _currentIndex = index);
+              },
             ),
           ),
         ],

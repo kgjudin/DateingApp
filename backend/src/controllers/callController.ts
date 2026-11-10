@@ -231,10 +231,107 @@ export class CallController {
     }
   }
 
+  /**
+   * Persists call history entry into LocalDbStore, local_db.json, and Supabase Cloud.
+   */
+  public static async recordHistoryItem(entry: {
+    id?: string;
+    callId: string;
+    userId: string;
+    direction: 'incoming' | 'outgoing';
+    peerId: string;
+    peerName: string;
+    peerAvatar: string;
+    callerId: string;
+    callerName: string;
+    callerAvatar: string;
+    receiverId: string;
+    receiverName: string;
+    receiverAvatar: string;
+    status: 'ended' | 'missed' | 'rejected' | 'busy' | 'cancelled';
+    duration: number;
+    createdAt?: string;
+  }): Promise<void> {
+    if (!entry.userId) return;
+
+    const record = {
+      id: entry.id || `hist_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+      callId: entry.callId,
+      userId: entry.userId,
+      direction: entry.direction,
+      peerId: entry.peerId,
+      peerName: entry.peerName,
+      peerAvatar: entry.peerAvatar,
+      callerId: entry.callerId,
+      callerName: entry.callerName,
+      callerAvatar: entry.callerAvatar,
+      receiverId: entry.receiverId,
+      receiverName: entry.receiverName,
+      receiverAvatar: entry.receiverAvatar,
+      status: entry.status,
+      duration: Number(entry.duration) || 0,
+      createdAt: entry.createdAt || new Date().toISOString(),
+    };
+
+    // Replace if same callId and userId already exists, otherwise prepend
+    const existingIndex = LocalDbStore.callHistory.findIndex(
+      h => h.callId === record.callId && String(h.userId).toLowerCase() === String(record.userId).toLowerCase()
+    );
+    if (existingIndex >= 0) {
+      LocalDbStore.callHistory[existingIndex] = record;
+    } else {
+      LocalDbStore.callHistory.unshift(record);
+    }
+    if (LocalDbStore.callHistory.length > 500) {
+      LocalDbStore.callHistory = LocalDbStore.callHistory.slice(0, 500);
+    }
+    LocalDbStore.saveToDisk();
+
+    // Persist to Supabase Cloud
+    const supabase = getSupabase();
+    if (supabase) {
+      try {
+        // Try public.call_history table if it exists in the schema
+        try {
+          await supabase.from('call_history').insert({
+            call_id: record.callId.startsWith('call_') ? null : record.callId,
+            user_id: record.userId,
+            other_user_id: record.peerId,
+            direction: record.direction,
+            status: record.status === 'rejected' ? 'missed' : record.status,
+            duration: record.duration,
+            created_at: record.createdAt,
+          });
+        } catch (_) {}
+
+        // Store in user_metadata so user never loses history across server restarts or redeploys
+        const { data } = await supabase.auth.admin.getUserById(record.userId);
+        if (data?.user) {
+          const currentList: any[] = Array.isArray(data.user.user_metadata?.call_history)
+            ? data.user.user_metadata.call_history
+            : [];
+          const deduped = [record, ...currentList.filter((c: any) => c.callId !== record.callId)].slice(0, 50);
+          await supabase.auth.admin.updateUserById(record.userId, {
+            user_metadata: {
+              ...data.user.user_metadata,
+              call_history: deduped,
+            }
+          });
+        }
+      } catch (e: any) {
+        console.warn(`[CallController] Supabase history sync notice for ${record.userId}:`, e.message);
+      }
+    }
+  }
+
   public static async declineCall(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      const { callId, reason } = req.body;
-      const call = LocalDbStore.calls.get(callId);
+      const rawUserId = req.user?.id;
+      const { callId, reason, callerId: passedCallerId, callerProfile: passedCallerProfile } = req.body;
+      let call = callId ? LocalDbStore.calls.get(callId) : null;
+
+      const receiverId = rawUserId || call?.receiverId || '';
+      const callerId = call?.callerId || passedCallerId || '';
 
       if (call) {
         if (call.status === 'rejected' || call.status === 'ended') {
@@ -245,53 +342,77 @@ export class CallController {
         call.status = 'rejected';
         call.endReason = reason || 'declined';
         LocalDbStore.calls.set(callId, call);
+      }
 
-        // Reset presence
-        const callerStatus = isUserOnline(call.callerId) ? 'online' : 'offline';
-        const receiverStatus = isUserOnline(call.receiverId) ? 'online' : 'offline';
-        LocalDbStore.presence.set(call.callerId, { userId: call.callerId, status: callerStatus, lastSeenAt: new Date().toISOString() });
-        LocalDbStore.presence.set(call.receiverId, { userId: call.receiverId, status: receiverStatus, lastSeenAt: new Date().toISOString() });
+      // Reset presence
+      if (callerId) {
+        const callerStatus = isUserOnline(callerId) ? 'online' : 'offline';
+        LocalDbStore.presence.set(callerId, { userId: callerId, status: callerStatus, lastSeenAt: new Date().toISOString() });
+      }
+      if (receiverId) {
+        const receiverStatus = isUserOnline(receiverId) ? 'online' : 'offline';
+        LocalDbStore.presence.set(receiverId, { userId: receiverId, status: receiverStatus, lastSeenAt: new Date().toISOString() });
+      }
 
-        // Record history for BOTH participants with their own direction context
-        const histBase = {
-          callId,
-          callerId: call.callerId,
-          receiverId: call.receiverId,
-          callerName: call.callerProfile.displayName,
-          callerAvatar: call.callerProfile.avatarUrl || '',
-          receiverName: call.receiverProfile.displayName,
-          receiverAvatar: call.receiverProfile.avatarUrl || '',
-          status: 'missed',   // declined → show as missed on both sides
-          duration: 0,
-          createdAt: new Date().toISOString(),
-        };
-        // Caller's record — they made an outgoing call that was missed
-        LocalDbStore.callHistory.unshift({
-          ...histBase,
-          id: `hist_${Date.now()}_caller`,
-          userId: call.callerId,
-          direction: 'outgoing',
-          peerName: call.receiverProfile.displayName,
-          peerAvatar: call.receiverProfile.avatarUrl || '',
-          peerId: call.receiverId,
-        });
-        // Receiver's record — they missed an incoming call
-        LocalDbStore.callHistory.unshift({
-          ...histBase,
-          id: `hist_${Date.now()}_receiver`,
-          userId: call.receiverId,
-          direction: 'incoming',
-          peerName: call.callerProfile.displayName,
-          peerAvatar: call.callerProfile.avatarUrl || '',
-          peerId: call.callerId,
-        });
+      // Resolve caller & receiver names/avatars
+      let callerName = call?.callerProfile?.displayName || passedCallerProfile?.displayName || 'Vybe Caller';
+      let callerAvatar = call?.callerProfile?.avatarUrl || passedCallerProfile?.avatarUrl || '';
+      let receiverName = call?.receiverProfile?.displayName || req.user?.displayName || req.user?.username || 'Vybe User';
+      let receiverAvatar = call?.receiverProfile?.avatarUrl || '';
 
-        LocalDbStore.saveToDisk();
-
-        const io = getSocketIo();
-        if (io) {
-          io.to(`user:${call.callerId}`).emit('call_declined', { callId, reason: call.endReason });
+      if (callerId && (!callerName || callerName === 'Vybe Caller')) {
+        const cp = LocalDbStore.profiles.get(callerId);
+        if (cp) {
+          callerName = cp.displayName || cp.username || callerName;
+          callerAvatar = cp.avatarUrl || callerAvatar;
         }
+      }
+
+      const finalCallId = callId || `call_${Date.now()}`;
+
+      // Caller record — made an outgoing call that was missed/declined
+      if (callerId) {
+        await CallController.recordHistoryItem({
+          callId: finalCallId,
+          userId: callerId,
+          direction: 'outgoing',
+          peerId: receiverId || 'unknown',
+          peerName: receiverName,
+          peerAvatar: receiverAvatar,
+          callerId,
+          callerName,
+          callerAvatar,
+          receiverId: receiverId || 'unknown',
+          receiverName,
+          receiverAvatar,
+          status: 'missed',
+          duration: 0,
+        });
+      }
+
+      // Receiver record — missed an incoming call
+      if (receiverId) {
+        await CallController.recordHistoryItem({
+          callId: finalCallId,
+          userId: receiverId,
+          direction: 'incoming',
+          peerId: callerId || 'unknown',
+          peerName: callerName,
+          peerAvatar: callerAvatar,
+          callerId: callerId || 'unknown',
+          callerName,
+          callerAvatar,
+          receiverId,
+          receiverName,
+          receiverAvatar,
+          status: 'missed',
+          duration: 0,
+        });
+      }
+
+      const io = getSocketIo();
+      if (io && callerId) {
+        io.to(`user:${callerId}`).emit('call_declined', { callId: finalCallId, reason: reason || 'declined' });
       }
 
       res.json({ success: true, message: 'Call declined.' });
@@ -302,9 +423,21 @@ export class CallController {
 
   public static async endCall(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      const { callId, durationSeconds } = req.body;
-      const call = LocalDbStore.calls.get(callId);
+      const rawUserId = req.user?.id;
+      const { callId, durationSeconds, peerId: passedPeerId, peerName: passedPeerName, peerAvatar: passedPeerAvatar } = req.body;
+      const duration = Number(durationSeconds) || 0;
+      let call = callId ? LocalDbStore.calls.get(callId) : null;
 
+      let callerId = call?.callerId || '';
+      let receiverId = call?.receiverId || '';
+
+      // If call session was not in memory, reconstruct participants using req.user.id and passedPeerId
+      if (!call && rawUserId && passedPeerId) {
+        callerId = rawUserId;
+        receiverId = passedPeerId;
+      }
+
+      const wasRinging = call?.status === 'ringing';
       if (call) {
         if (call.status === 'ended') {
           res.json({ success: true, message: 'Call already ended.' });
@@ -312,57 +445,94 @@ export class CallController {
         }
 
         call.status = 'ended';
-        call.duration = durationSeconds || 0;
+        call.duration = duration;
         call.endedAt = new Date().toISOString();
         LocalDbStore.calls.set(callId, call);
+      }
 
-        // Reset presence
-        const callerStatus = isUserOnline(call.callerId) ? 'online' : 'offline';
-        const receiverStatus = isUserOnline(call.receiverId) ? 'online' : 'offline';
-        LocalDbStore.presence.set(call.callerId, { userId: call.callerId, status: callerStatus, lastSeenAt: new Date().toISOString() });
-        LocalDbStore.presence.set(call.receiverId, { userId: call.receiverId, status: receiverStatus, lastSeenAt: new Date().toISOString() });
+      // Reset presence
+      if (callerId) {
+        const callerStatus = isUserOnline(callerId) ? 'online' : 'offline';
+        LocalDbStore.presence.set(callerId, { userId: callerId, status: callerStatus, lastSeenAt: new Date().toISOString() });
+      }
+      if (receiverId) {
+        const receiverStatus = isUserOnline(receiverId) ? 'online' : 'offline';
+        LocalDbStore.presence.set(receiverId, { userId: receiverId, status: receiverStatus, lastSeenAt: new Date().toISOString() });
+      }
 
-        // Record history for BOTH participants with their own direction context
-        const histBase = {
-          callId,
-          callerId: call.callerId,
-          receiverId: call.receiverId,
-          callerName: call.callerProfile.displayName,
-          callerAvatar: call.callerProfile.avatarUrl || '',
-          receiverName: call.receiverProfile.displayName,
-          receiverAvatar: call.receiverProfile.avatarUrl || '',
-          status: 'ended',
-          duration: call.duration,
-          createdAt: new Date().toISOString(),
-        };
-        // Caller's record — outgoing call
-        LocalDbStore.callHistory.unshift({
-          ...histBase,
-          id: `hist_${Date.now()}_caller`,
-          userId: call.callerId,
+      // Resolve caller profile
+      let callerName = call?.callerProfile?.displayName;
+      let callerAvatar = call?.callerProfile?.avatarUrl || '';
+      let receiverName = call?.receiverProfile?.displayName || passedPeerName;
+      let receiverAvatar = call?.receiverProfile?.avatarUrl || passedPeerAvatar || '';
+
+      if (!callerName && callerId) {
+        const cp = LocalDbStore.profiles.get(callerId);
+        callerName = cp?.displayName || cp?.username || (rawUserId === callerId ? req.user?.displayName : 'Vybe Caller');
+        callerAvatar = cp?.avatarUrl || callerAvatar;
+      }
+      if (!receiverName && receiverId) {
+        const rp = LocalDbStore.profiles.get(receiverId);
+        receiverName = rp?.displayName || rp?.username || (rawUserId === receiverId ? req.user?.displayName : 'Vybe User');
+        receiverAvatar = rp?.avatarUrl || receiverAvatar;
+      }
+
+      callerName = callerName || 'Vybe Caller';
+      receiverName = receiverName || 'Vybe User';
+
+      const finalCallId = callId || `call_${Date.now()}`;
+
+      // Status logic:
+      // If duration is 0 or was cancelled while ringing:
+      // Caller: ended with 0s
+      // Receiver: missed
+      // If duration > 0:
+      // Both: ended with duration
+      const callerStatus = 'ended';
+      const receiverStatus = (duration > 0 && !wasRinging) ? 'ended' : 'missed';
+
+      if (callerId) {
+        await CallController.recordHistoryItem({
+          callId: finalCallId,
+          userId: callerId,
           direction: 'outgoing',
-          peerName: call.receiverProfile.displayName,
-          peerAvatar: call.receiverProfile.avatarUrl || '',
-          peerId: call.receiverId,
+          peerId: receiverId || 'unknown',
+          peerName: receiverName,
+          peerAvatar: receiverAvatar,
+          callerId,
+          callerName,
+          callerAvatar,
+          receiverId: receiverId || 'unknown',
+          receiverName,
+          receiverAvatar,
+          status: callerStatus,
+          duration,
         });
-        // Receiver's record — incoming call
-        LocalDbStore.callHistory.unshift({
-          ...histBase,
-          id: `hist_${Date.now()}_receiver`,
-          userId: call.receiverId,
+      }
+
+      if (receiverId && receiverId !== 'unknown') {
+        await CallController.recordHistoryItem({
+          callId: finalCallId,
+          userId: receiverId,
           direction: 'incoming',
-          peerName: call.callerProfile.displayName,
-          peerAvatar: call.callerProfile.avatarUrl || '',
-          peerId: call.callerId,
+          peerId: callerId || 'unknown',
+          peerName: callerName,
+          peerAvatar: callerAvatar,
+          callerId: callerId || 'unknown',
+          callerName,
+          callerAvatar,
+          receiverId,
+          receiverName,
+          receiverAvatar,
+          status: receiverStatus,
+          duration,
         });
+      }
 
-        LocalDbStore.saveToDisk();
-
-        const io = getSocketIo();
-        if (io) {
-          io.to(`user:${call.callerId}`).emit('call_ended', { callId, duration: call.duration });
-          io.to(`user:${call.receiverId}`).emit('call_ended', { callId, duration: call.duration });
-        }
+      const io = getSocketIo();
+      if (io) {
+        if (callerId) io.to(`user:${callerId}`).emit('call_ended', { callId: finalCallId, duration });
+        if (receiverId) io.to(`user:${receiverId}`).emit('call_ended', { callId: finalCallId, duration });
       }
 
       res.json({ success: true, message: 'Call ended successfully.' });
@@ -380,18 +550,42 @@ export class CallController {
       }
       const userId = String(rawUserId).trim().toLowerCase();
 
-      // Filter STRICTLY to only records where this user participated (caller or receiver).
-      // NEVER show any other user's calls.
-      const history = LocalDbStore.callHistory
+      // In-memory / local_db matches
+      const localMatches = LocalDbStore.callHistory
         .filter(h => {
           const hUserId = h.userId ? String(h.userId).trim().toLowerCase() : null;
-          if (hUserId) {
-            return hUserId === userId;
-          }
+          if (hUserId) return hUserId === userId;
           const cId = h.callerId ? String(h.callerId).trim().toLowerCase() : null;
           const rId = h.receiverId ? String(h.receiverId).trim().toLowerCase() : null;
           return cId === userId || rId === userId;
-        })
+        });
+
+      // Supabase user_metadata matches
+      let cloudMatches: any[] = [];
+      const supabase = getSupabase();
+      if (supabase) {
+        try {
+          const { data } = await supabase.auth.admin.getUserById(userId);
+          if (Array.isArray(data?.user?.user_metadata?.call_history)) {
+            cloudMatches = data.user.user_metadata.call_history;
+          }
+        } catch (_) {}
+      }
+
+      // Merge and deduplicate
+      const combined = [...localMatches, ...cloudMatches];
+      const seen = new Set<string>();
+      const deduped: any[] = [];
+
+      for (const item of combined) {
+        const key = item.callId ? `${item.callId}_${item.direction || ''}` : (item.id || JSON.stringify(item));
+        if (!seen.has(key)) {
+          seen.add(key);
+          deduped.push(item);
+        }
+      }
+
+      const history = deduped
         .map(h => {
           const cId = h.callerId ? String(h.callerId).trim().toLowerCase() : '';
           const rId = h.receiverId ? String(h.receiverId).trim().toLowerCase() : '';
@@ -400,18 +594,30 @@ export class CallController {
             : (rId === userId);
 
           const peerId = h.peerId || (isIncoming ? h.callerId : h.receiverId);
-          const peerName = h.peerName || (isIncoming ? (h.callerName || 'Caller') : (h.receiverName || 'User'));
-          const peerAvatar = h.peerAvatar || (isIncoming ? (h.callerAvatar || '') : (h.receiverAvatar || ''));
+          let peerName = h.peerName || (isIncoming ? (h.callerName || 'Caller') : (h.receiverName || 'User'));
+          let peerAvatar = h.peerAvatar || (isIncoming ? (h.callerAvatar || '') : (h.receiverAvatar || ''));
+
+          if ((!peerName || peerName === 'Caller' || peerName === 'User') && peerId) {
+            const p = LocalDbStore.profiles.get(peerId);
+            if (p) {
+              peerName = p.displayName || p.username || peerName;
+              peerAvatar = p.avatarUrl || peerAvatar;
+            }
+          }
 
           return {
             ...h,
+            userId,
             direction: isIncoming ? 'incoming' : 'outgoing',
             peerId,
             peerName,
             peerAvatar,
             status: h.status === 'rejected' ? 'missed' : (h.status || 'ended'),
+            duration: Number(h.duration) || 0,
+            createdAt: h.createdAt || new Date().toISOString(),
           };
-        });
+        })
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
       res.json({ success: true, data: history });
     } catch (err: any) {
