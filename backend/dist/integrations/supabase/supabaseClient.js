@@ -32,6 +32,8 @@ class LocalDbStore {
     static giftTransactions = [];
     static notifications = [];
     static userBlocks = new Set(); // "blockerId:blockedId"
+    static blockedUsers = new Set(); // "userId" (Admin-level account ban/block)
+    static adminWarnings = []; // [{ id, userId, message, createdAt, adminId }]
     static userReports = [];
     static credentials = new Map();
     static getStoreFilePath() {
@@ -69,6 +71,8 @@ class LocalDbStore {
                 walletTransactions: this.walletTransactions.slice(0, 1000),
                 giftTransactions: this.giftTransactions.slice(0, 500),
                 userBlocks: Array.from(this.userBlocks),
+                blockedUsers: Array.from(this.blockedUsers),
+                adminWarnings: this.adminWarnings.slice(0, 500),
                 callHistory: this.callHistory.slice(0, 500)
             };
             fs_1.default.writeFileSync(filePath, JSON.stringify(payload, null, 2), 'utf-8');
@@ -112,6 +116,14 @@ class LocalDbStore {
                 for (const item of data.userBlocks) {
                     this.userBlocks.add(item);
                 }
+            }
+            if (Array.isArray(data.blockedUsers)) {
+                for (const item of data.blockedUsers) {
+                    this.blockedUsers.add(item);
+                }
+            }
+            if (Array.isArray(data.adminWarnings)) {
+                this.adminWarnings = data.adminWarnings;
             }
             if (Array.isArray(data.callHistory)) {
                 this.callHistory = data.callHistory;

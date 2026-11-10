@@ -94,6 +94,9 @@ router.delete('/notifications/clear', authMiddleware_1.authenticateJwt, chatCont
 // Admin Console API & Dashboard
 router.get('/admin/stats', adminController_1.AdminController.getDashboardStats);
 router.get('/admin/users', adminController_1.AdminController.listUsers);
+router.post('/admin/users/:userId/coins', adminController_1.AdminController.addCoins);
+router.post('/admin/users/:userId/block', adminController_1.AdminController.toggleUserBlock);
+router.post('/admin/users/:userId/warning', adminController_1.AdminController.sendWarning);
 router.post('/admin/users/:userId/suspend', adminController_1.AdminController.toggleUserSuspension);
 router.get('/admin/reports', adminController_1.AdminController.listReports);
 router.post('/admin/reports/:reportId/resolve', adminController_1.AdminController.resolveReport);

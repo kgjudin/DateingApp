@@ -39,6 +39,107 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
     _listenForNewFollowers();
     _listenForGiftReceived();
     _listenForWalletUpdates();
+    _listenForAdminAlerts();
+  }
+
+  void _listenForAdminAlerts() {
+    final socket = ref.read(socketServiceProvider);
+
+    // 1. Admin Warning Alert
+    socket.onAdminWarning.listen((data) {
+      if (!mounted) return;
+      final msg = data['message']?.toString() ?? 'Please adhere to community guidelines.';
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppColors.secondaryBackground,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          title: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.amber, size: 28),
+              SizedBox(width: 10),
+              Text('Admin Warning', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)),
+            ],
+          ),
+          content: Text(
+            msg,
+            style: const TextStyle(color: Colors.white70, fontSize: 14, height: 1.4),
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.amber[700],
+                foregroundColor: Colors.black,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+              child: const Text('I Understand', style: TextStyle(fontWeight: FontWeight.w800)),
+            ),
+          ],
+        ),
+      );
+    });
+
+    // 2. Coin Balance Live Update
+    socket.onCoinBalanceUpdated.listen((data) {
+      if (!mounted) return;
+      final newBal = data['newBalance'] as int?;
+      final added = data['amountAdded'] as int?;
+      if (newBal != null) {
+        ref.read(authControllerProvider.notifier).updateCoinBalance(newBal);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: AppColors.cardBackground,
+            content: Text(
+              '🪙 Admin granted you ${added != null ? '+$added' : ''} coins! New balance: $newBal coins',
+              style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.w700),
+            ),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    });
+
+    // 3. User Blocked by Admin
+    socket.onUserBlocked.listen((data) {
+      if (!mounted) return;
+      final reason = data['reason']?.toString() ?? 'Your account has been suspended by an administrator.';
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppColors.secondaryBackground,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          title: const Row(
+            children: [
+              Icon(Icons.block_rounded, color: AppColors.error, size: 28),
+              SizedBox(width: 10),
+              Text('Account Suspended', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)),
+            ],
+          ),
+          content: Text(
+            reason,
+            style: const TextStyle(color: Colors.white70, fontSize: 14),
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                ref.read(authControllerProvider.notifier).logout();
+                context.go('/login');
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.error,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+              child: const Text('Log Out', style: TextStyle(fontWeight: FontWeight.w700)),
+            ),
+          ],
+        ),
+      );
+    });
   }
 
   void _listenForGiftReceived() {

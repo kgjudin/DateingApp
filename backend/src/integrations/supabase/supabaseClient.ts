@@ -23,6 +23,8 @@ export class LocalDbStore {
   public static giftTransactions: any[] = [];
   public static notifications: any[] = [];
   public static userBlocks: Set<string> = new Set(); // "blockerId:blockedId"
+  public static blockedUsers: Set<string> = new Set(); // "userId" (Admin-level account ban/block)
+  public static adminWarnings: any[] = []; // [{ id, userId, message, createdAt, adminId }]
   public static userReports: any[] = [];
   public static credentials: Map<string, { email: string; password: string }> = new Map();
 
@@ -61,6 +63,8 @@ export class LocalDbStore {
         walletTransactions: this.walletTransactions.slice(0, 1000),
         giftTransactions: this.giftTransactions.slice(0, 500),
         userBlocks: Array.from(this.userBlocks),
+        blockedUsers: Array.from(this.blockedUsers),
+        adminWarnings: this.adminWarnings.slice(0, 500),
         callHistory: this.callHistory.slice(0, 500)
       };
       fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), 'utf-8');
@@ -103,6 +107,14 @@ export class LocalDbStore {
         for (const item of data.userBlocks) {
           this.userBlocks.add(item);
         }
+      }
+      if (Array.isArray(data.blockedUsers)) {
+        for (const item of data.blockedUsers) {
+          this.blockedUsers.add(item);
+        }
+      }
+      if (Array.isArray(data.adminWarnings)) {
+        this.adminWarnings = data.adminWarnings;
       }
       if (Array.isArray(data.callHistory)) {
         this.callHistory = data.callHistory;

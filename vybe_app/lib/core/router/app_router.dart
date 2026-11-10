@@ -11,6 +11,7 @@ import '../../features/notifications/presentation/screens/notifications_screen.d
 import '../../features/profile/presentation/screens/profile_builder_screen.dart';
 import '../../features/profile/presentation/screens/profile_details_screen.dart';
 import '../../features/wallet/presentation/screens/wallet_screen.dart';
+import '../../features/admin/presentation/screens/admin_screen.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   // Only watch isAuthenticated so coin balance or profile updates do NOT
@@ -87,6 +88,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/notifications',
         builder: (context, state) => const NotificationsScreen(),
+      ),
+      GoRoute(
+        path: '/admin',
+        builder: (context, state) => const AdminScreen(),
       ),
     ],
   );

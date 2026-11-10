@@ -18,6 +18,9 @@ class SocketService {
   final _liveGiftController = StreamController<Map<String, dynamic>>.broadcast();
   final _giftReceivedController = StreamController<Map<String, dynamic>>.broadcast();
   final _walletUpdatedController = StreamController<Map<String, dynamic>>.broadcast();
+  final _adminWarningController = StreamController<Map<String, dynamic>>.broadcast();
+  final _userBlockedController = StreamController<Map<String, dynamic>>.broadcast();
+  final _coinBalanceUpdatedController = StreamController<Map<String, dynamic>>.broadcast();
   final _notificationController = StreamController<Map<String, dynamic>>.broadcast();
   final _roomSpeakerController = StreamController<Map<String, dynamic>>.broadcast();
   final _roomUpdatedController = StreamController<Map<String, dynamic>>.broadcast();
@@ -40,6 +43,9 @@ class SocketService {
   Stream<Map<String, dynamic>> get onLiveGift => _liveGiftController.stream;
   Stream<Map<String, dynamic>> get onGiftReceived => _giftReceivedController.stream;
   Stream<Map<String, dynamic>> get onWalletUpdated => _walletUpdatedController.stream;
+  Stream<Map<String, dynamic>> get onAdminWarning => _adminWarningController.stream;
+  Stream<Map<String, dynamic>> get onUserBlocked => _userBlockedController.stream;
+  Stream<Map<String, dynamic>> get onCoinBalanceUpdated => _coinBalanceUpdatedController.stream;
   Stream<Map<String, dynamic>> get onNotificationReceived => _notificationController.stream;
   Stream<Map<String, dynamic>> get onNewFollower => _newFollowerController.stream;
   Stream<Map<String, dynamic>> get onRoomSpeakerUpdated => _roomSpeakerController.stream;
@@ -137,6 +143,26 @@ class SocketService {
       _socket!.on('wallet_updated', (data) {
         if (data is Map) {
           _walletUpdatedController.add(Map<String, dynamic>.from(data));
+        }
+      });
+
+      _socket!.on('coin_balance_updated', (data) {
+        if (data is Map) {
+          final map = Map<String, dynamic>.from(data);
+          _coinBalanceUpdatedController.add(map);
+          _walletUpdatedController.add(map);
+        }
+      });
+
+      _socket!.on('admin_warning', (data) {
+        if (data is Map) {
+          _adminWarningController.add(Map<String, dynamic>.from(data));
+        }
+      });
+
+      _socket!.on('user_blocked', (data) {
+        if (data is Map) {
+          _userBlockedController.add(Map<String, dynamic>.from(data));
         }
       });
 

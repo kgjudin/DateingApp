@@ -21,6 +21,15 @@ class CallController {
                 res.status(400).json({ success: false, error: { message: 'You cannot call yourself.' } });
                 return;
             }
+            // Check platform admin ban / block
+            if (supabaseClient_1.LocalDbStore.blockedUsers.has(callerId)) {
+                res.status(403).json({ success: false, error: { message: 'Your account is suspended by an administrator.' } });
+                return;
+            }
+            if (supabaseClient_1.LocalDbStore.blockedUsers.has(receiverId)) {
+                res.status(403).json({ success: false, error: { message: 'This user is currently unavailable.' } });
+                return;
+            }
             // Check blocks
             if (supabaseClient_1.LocalDbStore.userBlocks.has(`${callerId}:${receiverId}`) ||
                 supabaseClient_1.LocalDbStore.userBlocks.has(`${receiverId}:${callerId}`)) {

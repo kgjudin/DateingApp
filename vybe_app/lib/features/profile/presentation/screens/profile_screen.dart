@@ -73,6 +73,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             onPressed: () => context.push('/wallet'),
           ),
           IconButton(
+            icon: const Icon(Icons.admin_panel_settings_outlined, color: AppColors.primaryAccentLight),
+            tooltip: 'Admin Console',
+            onPressed: () => context.push('/admin'),
+          ),
+          IconButton(
             icon: const Icon(Icons.settings_outlined, color: Colors.white),
             onPressed: () => _showSettingsModal(context, ref),
           ),
@@ -334,7 +339,18 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               activeColor: AppColors.primaryAccent,
               onChanged: (val) {},
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
+            ListTile(
+              leading: const Icon(Icons.admin_panel_settings_rounded, color: AppColors.primaryAccent),
+              title: const Text('Admin Console', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+              subtitle: const Text('Add coins, block users & send warnings', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+              trailing: const Icon(Icons.chevron_right_rounded, color: Colors.white70),
+              onTap: () {
+                Navigator.pop(ctx);
+                context.push('/admin');
+              },
+            ),
+            const SizedBox(height: 16),
             ListTile(
               leading: const Icon(Icons.logout_rounded, color: AppColors.error),
               title: const Text('Log Out', style: TextStyle(color: AppColors.error, fontWeight: FontWeight.w700)),
