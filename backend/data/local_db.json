@@ -65,8 +65,8 @@
     [
       "1b392b7e-acc2-4ff7-b792-51b09c5a255d",
       {
-        "balance": 700,
-        "earned": 700,
+        "balance": 7200,
+        "earned": 100,
         "spent": 0
       }
     ],
@@ -79,19 +79,6 @@
       }
     ]
   ],
-  "walletTransactions": [
-    {
-      "id": "wtx_crd_1794329399637_imgv",
-      "userId": "1b392b7e-acc2-4ff7-b792-51b09c5a255d",
-      "amount": 200,
-      "balanceAfter": 700,
-      "type": "recharge",
-      "description": "Recharged 200 coins test",
-      "referenceId": "ref_1794329399637",
-      "createdAt": "2026-11-10T16:49:59.637Z"
-    }
-  ],
-  "giftTransactions": [],
   "userBlocks": [],
   "callHistory": []
 }

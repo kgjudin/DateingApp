@@ -293,16 +293,22 @@ export class CallController {
       try {
         // Try public.call_history table if it exists in the schema
         try {
-          await supabase.from('call_history').insert({
-            call_id: record.callId.startsWith('call_') ? null : record.callId,
+          const { error: chErr } = await supabase.from('call_history').insert({
+            call_id: record.callId,
             user_id: record.userId,
+            peer_id: record.peerId,
             other_user_id: record.peerId,
+            peer_name: record.peerName,
+            peer_avatar: record.peerAvatar,
             direction: record.direction,
             status: record.status === 'rejected' ? 'missed' : record.status,
             duration: record.duration,
             created_at: record.createdAt,
           });
-        } catch (_) {}
+          if (chErr) console.warn('[CallController] Supabase call_history insert notice:', chErr.message);
+        } catch (e: any) {
+          console.warn('[CallController] Supabase call_history exception:', e.message);
+        }
 
         // Store in user_metadata so user never loses history across server restarts or redeploys
         const { data } = await supabase.auth.admin.getUserById(record.userId);
@@ -560,14 +566,35 @@ export class CallController {
           return cId === userId || rId === userId;
         });
 
-      // Supabase user_metadata matches
+      // Supabase matches (both table and user_metadata)
       let cloudMatches: any[] = [];
       const supabase = getSupabase();
       if (supabase) {
         try {
+          const { data: dbRows } = await supabase
+            .from('call_history')
+            .select('*')
+            .eq('user_id', userId);
+          if (Array.isArray(dbRows)) {
+            cloudMatches.push(...dbRows.map(r => ({
+              id: r.id,
+              callId: r.call_id,
+              userId: r.user_id,
+              peerId: r.peer_id || r.other_user_id,
+              peerName: r.peer_name,
+              peerAvatar: r.peer_avatar,
+              direction: r.direction,
+              status: r.status,
+              duration: r.duration,
+              createdAt: r.created_at
+            })));
+          }
+        } catch (_) {}
+
+        try {
           const { data } = await supabase.auth.admin.getUserById(userId);
           if (Array.isArray(data?.user?.user_metadata?.call_history)) {
-            cloudMatches = data.user.user_metadata.call_history;
+            cloudMatches.push(...data.user.user_metadata.call_history);
           }
         } catch (_) {}
       }
